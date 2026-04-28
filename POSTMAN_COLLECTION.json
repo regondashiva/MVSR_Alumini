@@ -1,0 +1,593 @@
+{
+	"info": {
+		"_postman_id": "mvsr-alumni-api",
+		"name": "MVSR Alumni Network API",
+		"description": "Complete API collection for MVSR Alumni Network",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Register User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"password123\",\n  \"phone\": \"9876543210\",\n  \"rollNumber\": \"123456789\",\n  \"batch\": 2015,\n  \"branch\": \"Computer Science Engineering\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/register",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "register"]
+						}
+					}
+				},
+				{
+					"name": "Login User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "login"]
+						}
+					}
+				},
+				{
+					"name": "Get Current User",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/auth/me",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "me"]
+						}
+					}
+				},
+				{
+					"name": "Update Profile",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"currentPosition\": \"Software Engineer\",\n  \"company\": \"Tech Company\",\n  \"location\": \"Bangalore\",\n  \"industry\": \"Technology\",\n  \"linkedin\": \"https://linkedin.com/in/johndoe\",\n  \"bio\": \"Passionate developer with 5+ years of experience...\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/update-profile",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "update-profile"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Alumni Directory",
+			"item": [
+				{
+					"name": "Get All Alumni",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/alumni?page=1&limit=20&batch=2015&branch=Computer Science Engineering&location=Bangalore&search=John",
+							"host": ["{{baseUrl}}"],
+							"path": ["alumni"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "batch",
+									"value": "2015"
+								},
+								{
+									"key": "branch",
+									"value": "Computer Science Engineering"
+								},
+								{
+									"key": "location",
+									"value": "Bangalore"
+								},
+								{
+									"key": "search",
+									"value": "John"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Alumni Statistics",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/alumni/stats",
+							"host": ["{{baseUrl}}"],
+							"path": ["alumni", "stats"]
+						}
+					}
+				},
+				{
+					"name": "Get Specific Alumni",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/alumni/{{userId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["alumni", "{{userId}}"]
+						}
+					}
+				},
+				{
+					"name": "Connect with Alumni",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/alumni/connect/{{userId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["alumni", "connect", "{{userId}}"]
+						}
+					}
+				},
+				{
+					"name": "Get Connections",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/alumni/connections",
+							"host": ["{{baseUrl}}"],
+							"path": ["alumni", "connections"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Events",
+			"item": [
+				{
+					"name": "Get All Events",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/events?page=1&limit=20&type=meetup&status=upcoming&search=reunion",
+							"host": ["{{baseUrl}}"],
+							"path": ["events"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "type",
+									"value": "meetup"
+								},
+								{
+									"key": "status",
+									"value": "upcoming"
+								},
+								{
+									"key": "search",
+									"value": "reunion"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Featured Events",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/events/featured",
+							"host": ["{{baseUrl}}"],
+							"path": ["events", "featured"]
+						}
+					}
+				},
+				{
+					"name": "Create Event",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Alumni Meet 2024\",\n  \"description\": \"Grand reunion event for all MVSR alumni\",\n  \"date\": \"2024-03-15\",\n  \"time\": \"10:00 AM\",\n  \"location\": \"MVSR Campus, Hyderabad\",\n  \"type\": \"meetup\",\n  \"maxAttendees\": 500,\n  \"isVirtual\": false,\n  \"registrationDeadline\": \"2024-03-10\",\n  \"price\": 0,\n  \"tags\": [\"reunion\", \"networking\"],\n  \"agenda\": [\n    {\n      \"time\": \"10:00 AM\",\n      \"title\": \"Registration\",\n      \"description\": \"Welcome and registration\"\n    },\n    {\n      \"time\": \"11:00 AM\",\n      \"title\": \"Inaugural Ceremony\",\n      \"description\": \"Principal's address\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/events",
+							"host": ["{{baseUrl}}"],
+							"path": ["events"]
+						}
+					}
+				},
+				{
+					"name": "Register for Event",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/events/{{eventId}}/register",
+							"host": ["{{baseUrl}}"],
+							"path": ["events", "{{eventId}}", "register"]
+						}
+					}
+				},
+				{
+					"name": "Get Registered Events",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/events/my/registered",
+							"host": ["{{baseUrl}}"],
+							"path": ["events", "my", "registered"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Jobs",
+			"item": [
+				{
+					"name": "Get All Jobs",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/jobs?page=1&limit=20&type=Full-time&location=Bangalore&search=developer",
+							"host": ["{{baseUrl}}"],
+							"path": ["jobs"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "type",
+									"value": "Full-time"
+								},
+								{
+									"key": "location",
+									"value": "Bangalore"
+								},
+								{
+									"key": "search",
+									"value": "developer"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Featured Jobs",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/jobs/featured",
+							"host": ["{{baseUrl}}"],
+							"path": ["jobs", "featured"]
+						}
+					}
+				},
+				{
+					"name": "Create Job Posting",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Senior Software Engineer\",\n  \"company\": \"Tech Company\",\n  \"location\": \"Bangalore\",\n  \"type\": \"Full-time\",\n  \"description\": \"We are looking for experienced software engineers...\",\n  \"requirements\": [\n    \"5+ years of experience\",\n    \"Strong programming skills\",\n    \"Cloud experience\"\n  ],\n  \"salary\": \"₹25-40 LPA\",\n  \"experience\": \"5-8 years\",\n  \"deadline\": \"2024-03-30\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/jobs",
+							"host": ["{{baseUrl}}"],
+							"path": ["jobs"]
+						}
+					}
+				},
+				{
+					"name": "Apply for Job",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/jobs/{{jobId}}/apply",
+							"host": ["{{baseUrl}}"],
+							"path": ["jobs", "{{jobId}}", "apply"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "News",
+			"item": [
+				{
+					"name": "Get All News",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/news?page=1&limit=20&category=achievements&search=award",
+							"host": ["{{baseUrl}}"],
+							"path": ["news"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "category",
+									"value": "achievements"
+								},
+								{
+									"key": "search",
+									"value": "award"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Featured News",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/news/featured",
+							"host": ["{{baseUrl}}"],
+							"path": ["news", "featured"]
+						}
+					}
+				},
+				{
+					"name": "Create News Article",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"MVSR Wins National Award\",\n  \"excerpt\": \"MVSR Engineering College has been recognized for excellence...\",\n  \"content\": \"Full news article content goes here...\",\n  \"category\": \"achievements\",\n  \"author\": \"Admin\",\n  \"image\": \"https://example.com/image.jpg\",\n  \"featured\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/news",
+							"host": ["{{baseUrl}}"],
+							"path": ["news"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Gallery",
+			"item": [
+				{
+					"name": "Get All Albums",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/gallery/albums?page=1&limit=20&category=events&search=reunion",
+							"host": ["{{baseUrl}}"],
+							"path": ["gallery", "albums"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "category",
+									"value": "events"
+								},
+								{
+									"key": "search",
+									"value": "reunion"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Featured Albums",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/gallery/albums/featured",
+							"host": ["{{baseUrl}}"],
+							"path": ["gallery", "albums", "featured"]
+						}
+					}
+				},
+				{
+					"name": "Create Album",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Alumni Meet 2024\",\n  \"description\": \"Photos from the grand alumni reunion...\",\n  \"category\": \"events\",\n  \"coverImage\": \"https://example.com/cover.jpg\",\n  \"featured\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/gallery/albums",
+							"host": ["{{baseUrl}}"],
+							"path": ["gallery", "albums"]
+						}
+					}
+				},
+				{
+					"name": "Upload Photos to Album",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"photos\": [\n    {\n      \"url\": \"https://example.com/photo1.jpg\",\n      \"title\": \"Group Photo\",\n      \"description\": \"All alumni together\"\n    },\n    {\n      \"url\": \"https://example.com/photo2.jpg\",\n      \"title\": \"Campus View\",\n      \"description\": \"Beautiful campus view\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/gallery/albums/{{albumId}}/photos",
+							"host": ["{{baseUrl}}"],
+							"path": ["gallery", "albums", "{{albumId}}", "photos"]
+						}
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:5000/api",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "userId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "eventId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "jobId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "albumId",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
