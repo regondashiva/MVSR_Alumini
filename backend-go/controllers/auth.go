@@ -28,6 +28,63 @@ func NewAuthController(cfg *config.Config) *AuthController {
 	}
 }
 
+// ─────────────────────────────────────────────
+//  TOKEN GENERATION
+// ─────────────────────────────────────────────
+
+// generateAccessToken creates a short-lived JWT (15 minutes).
+// It is signed with JWTSecret and carries user identity claims.
+func (ac *AuthController) generateAccessToken(user models.User) (string, error) {
+	claims := jwt.MapClaims{
+		"userID":    user.ID,
+		"email":     user.Email,
+		"role":      user.Role,
+		"firstName": user.FirstName,
+		"lastName":  user.LastName,
+		"type":      "access",
+		"exp":       time.Now().Add(15 * time.Minute).Unix(),
+		"iat":       time.Now().Unix(),
+		"jti":       uuid.New().String(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(ac.cfg.JWTSecret))
+}
+
+// generateRefreshToken creates a long-lived JWT (7 days).
+// It is signed with JWTRefreshSecret and its value is persisted in the
+// refresh_tokens table so it can be revoked on logout.
+func (ac *AuthController) generateRefreshToken(userID int) (string, error) {
+	expiresAt := time.Now().Add(7 * 24 * time.Hour)
+
+	claims := jwt.MapClaims{
+		"userID": userID,
+		"type":   "refresh",
+		"exp":    expiresAt.Unix(),
+		"iat":    time.Now().Unix(),
+		"jti":    uuid.New().String(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenStr, err := token.SignedString([]byte(ac.cfg.JWTRefreshSecret))
+	if err != nil {
+		return "", err
+	}
+
+	// Persist so we can revoke / rotate it later
+	_, err = ac.db.Exec(
+		"INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)",
+		userID, tokenStr, expiresAt,
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to store refresh token: %w", err)
+	}
+
+	return tokenStr, nil
+}
+
+// ─────────────────────────────────────────────
+//  AUTH HANDLERS
+// ─────────────────────────────────────────────
+
 // Register handles user registration
 func (ac *AuthController) Register(c *gin.Context) {
 	var req models.CreateUserRequest
@@ -36,13 +93,12 @@ func (ac *AuthController) Register(c *gin.Context) {
 		return
 	}
 
-	// Validate input
 	if err := middleware.ValidateStruct(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Validation failed", "errors": err})
 		return
 	}
 
-	// Check if user already exists
+	// Check duplicate email
 	var existingEmail string
 	err := ac.db.QueryRow("SELECT email FROM users WHERE email = ?", req.Email).Scan(&existingEmail)
 	if err == nil {
@@ -50,6 +106,7 @@ func (ac *AuthController) Register(c *gin.Context) {
 		return
 	}
 
+	// Check duplicate roll number
 	var existingRollNumber string
 	err = ac.db.QueryRow("SELECT roll_number FROM users WHERE roll_number = ?", req.RollNumber).Scan(&existingRollNumber)
 	if err == nil {
@@ -57,14 +114,12 @@ func (ac *AuthController) Register(c *gin.Context) {
 		return
 	}
 
-	// Hash password
 	hashedPassword, err := config.HashPassword(req.Password)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to hash password"})
 		return
 	}
 
-	// Create user with SQL INSERT
 	query := `
 		INSERT INTO users (
 			first_name, last_name, email, password, roll_number, country_code, 
@@ -76,9 +131,7 @@ func (ac *AuthController) Register(c *gin.Context) {
 	`
 
 	now := time.Now()
-	isVerified := req.Role == "admin" // Auto-verify admins
-
-	// Convert skills to JSON
+	isVerified := req.Role == "admin"
 	skills := models.JSONStringSlice{req.Skills}
 
 	_, err = ac.db.Exec(query,
@@ -93,7 +146,6 @@ func (ac *AuthController) Register(c *gin.Context) {
 		return
 	}
 
-	// Get the created user ID for response
 	var userID int
 	err = ac.db.QueryRow("SELECT id FROM users WHERE email = ?", req.Email).Scan(&userID)
 	if err != nil {
@@ -101,7 +153,6 @@ func (ac *AuthController) Register(c *gin.Context) {
 		return
 	}
 
-	// Create user response object
 	user := models.User{
 		ID:          userID,
 		FirstName:   req.FirstName,
@@ -121,10 +172,14 @@ func (ac *AuthController) Register(c *gin.Context) {
 		UpdatedAt:   now,
 	}
 
-	// Generate JWT token
-	token, err := ac.generateToken(user)
+	accessToken, err := ac.generateAccessToken(user)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to generate token"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to generate access token"})
+		return
+	}
+	refreshToken, err := ac.generateRefreshToken(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to generate refresh token"})
 		return
 	}
 
@@ -132,8 +187,10 @@ func (ac *AuthController) Register(c *gin.Context) {
 		"success": true,
 		"message": "User registered successfully",
 		"data": gin.H{
-			"user":  user,
-			"token": token,
+			"user":          user,
+			"access_token":  accessToken,
+			"refresh_token": refreshToken,
+			"expires_in":    900, // 15 minutes in seconds
 		},
 	})
 }
@@ -146,13 +203,11 @@ func (ac *AuthController) Login(c *gin.Context) {
 		return
 	}
 
-	// Validate input
 	if err := middleware.ValidateStruct(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Validation failed", "errors": err.Error()})
 		return
 	}
 
-	// Find user by roll number
 	var user models.User
 	query := `
 		SELECT id, first_name, last_name, email, password, roll_number, country_code,
@@ -172,7 +227,6 @@ func (ac *AuthController) Login(c *gin.Context) {
 		&user.Profile.ExperienceYears, &user.Profile.Industry, &profileSkills,
 		&user.CreatedAt, &user.UpdatedAt, &lastLogin,
 	)
-
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Invalid roll number or password"})
 		return
@@ -183,42 +237,158 @@ func (ac *AuthController) Login(c *gin.Context) {
 		user.LastLogin = &lastLogin.Time
 	}
 
-	// Check password
 	if err := config.CheckPassword(req.Password, user.Password); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Invalid credentials"})
 		return
 	}
 
-	// Check if user is active
 	if !user.IsActive {
 		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Account is deactivated"})
 		return
 	}
 
-	// Update last login
+	// Update last login (non-fatal)
 	now := time.Now()
-	_, err = ac.db.Exec("UPDATE users SET last_login = ? WHERE id = ?", now, user.ID)
-	if err != nil {
-		// Log error but don't fail the request
-	}
+	ac.db.Exec("UPDATE users SET last_login = ? WHERE id = ?", now, user.ID)
 
-	// Generate JWT token
-	token, err := ac.generateToken(user)
+	accessToken, err := ac.generateAccessToken(user)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to generate token"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to generate access token"})
+		return
+	}
+	refreshToken, err := ac.generateRefreshToken(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to generate refresh token"})
 		return
 	}
 
-	// Remove password from response
-	user.Password = ""
+	user.Password = "" // never send password back
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Login successful",
 		"data": gin.H{
-			"user":  user,
-			"token": token,
+			"user":          user,
+			"access_token":  accessToken,
+			"refresh_token": refreshToken,
+			"expires_in":    900, // 15 minutes in seconds
 		},
+	})
+}
+
+// RefreshToken issues a new access token (and rotates the refresh token)
+// using a valid refresh token sent in the request body.
+// This endpoint does NOT require the Auth middleware.
+func (ac *AuthController) RefreshToken(c *gin.Context) {
+	var req struct {
+		RefreshToken string `json:"refresh_token" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "refresh_token is required"})
+		return
+	}
+
+	// 1. Verify signature using the refresh secret
+	token, err := jwt.Parse(req.RefreshToken, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return []byte(ac.cfg.JWTRefreshSecret), nil
+	})
+	if err != nil || !token.Valid {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Invalid refresh token"})
+		return
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok || claims["type"] != "refresh" {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Invalid token type"})
+		return
+	}
+
+	// 2. Check token exists in DB (not revoked / not already used)
+	var dbUserID int
+	var expiresAt time.Time
+	err = ac.db.QueryRow(
+		"SELECT user_id, expires_at FROM refresh_tokens WHERE token = ?",
+		req.RefreshToken,
+	).Scan(&dbUserID, &expiresAt)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Refresh token not found or already revoked"})
+		return
+	}
+	if time.Now().After(expiresAt) {
+		ac.db.Exec("DELETE FROM refresh_tokens WHERE token = ?", req.RefreshToken)
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Refresh token has expired"})
+		return
+	}
+
+	// 3. Rotate: delete the used refresh token
+	ac.db.Exec("DELETE FROM refresh_tokens WHERE token = ?", req.RefreshToken)
+
+	// 4. Load fresh user data
+	var user models.User
+	err = ac.db.QueryRow(
+		"SELECT id, first_name, last_name, email, role FROM users WHERE id = ? AND is_active = true",
+		dbUserID,
+	).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Email, &user.Role)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "User not found or account deactivated"})
+		return
+	}
+
+	// 5. Issue new access token + new refresh token
+	accessToken, err := ac.generateAccessToken(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to generate access token"})
+		return
+	}
+	newRefreshToken, err := ac.generateRefreshToken(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to generate refresh token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Tokens refreshed successfully",
+		"data": gin.H{
+			"access_token":  accessToken,
+			"refresh_token": newRefreshToken,
+			"expires_in":    900,
+		},
+	})
+}
+
+// Logout revokes the refresh token so it can no longer be used.
+func (ac *AuthController) Logout(c *gin.Context) {
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	// Ignore bind error — token is optional (client may have already lost it)
+	c.ShouldBindJSON(&req)
+
+	if req.RefreshToken != "" {
+		ac.db.Exec("DELETE FROM refresh_tokens WHERE token = ?", req.RefreshToken)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Logout successful",
+	})
+}
+
+// LogoutAll revokes ALL refresh tokens for the authenticated user (logout from every device).
+func (ac *AuthController) LogoutAll(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "User not authenticated"})
+		return
+	}
+	ac.db.Exec("DELETE FROM refresh_tokens WHERE user_id = ?", userID)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Logged out from all devices",
 	})
 }
 
@@ -230,7 +400,6 @@ func (ac *AuthController) GetProfile(c *gin.Context) {
 		return
 	}
 
-	// Find user by ID
 	var user models.User
 	query := `
 		SELECT id, first_name, last_name, email, roll_number, country_code,
@@ -264,7 +433,6 @@ func (ac *AuthController) GetProfile(c *gin.Context) {
 		&user.Preferences.Theme, &user.Preferences.Language, &user.Preferences.Timezone,
 		&user.CreatedAt, &user.UpdatedAt, &lastLogin,
 	)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "User not found"})
@@ -280,8 +448,6 @@ func (ac *AuthController) GetProfile(c *gin.Context) {
 	if lastLogin.Valid {
 		user.LastLogin = &lastLogin.Time
 	}
-
-	// Remove password from response
 	user.Password = ""
 
 	c.JSON(http.StatusOK, gin.H{
@@ -304,14 +470,11 @@ func (ac *AuthController) UpdateProfile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request body", "errors": err.Error()})
 		return
 	}
-
-	// Validate input
 	if err := middleware.ValidateStruct(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Validation failed", "errors": err})
 		return
 	}
 
-	// Build dynamic UPDATE query
 	var updates []string
 	var args []interface{}
 
@@ -328,11 +491,8 @@ func (ac *AuthController) UpdateProfile(c *gin.Context) {
 		args = append(args, *req.Phone)
 	}
 
-	// Always update updated_at
 	updates = append(updates, "updated_at = ?")
 	args = append(args, time.Now())
-
-	// Add user ID as last parameter
 	args = append(args, userID)
 
 	if len(updates) == 0 {
@@ -340,7 +500,6 @@ func (ac *AuthController) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	// Execute UPDATE query
 	query := fmt.Sprintf("UPDATE users SET %s WHERE id = ?", strings.Join(updates, ", "))
 	_, err := ac.db.Exec(query, args...)
 	if err != nil {
@@ -348,7 +507,6 @@ func (ac *AuthController) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	// Fetch updated user
 	var user models.User
 	query = `
 		SELECT id, first_name, last_name, email, roll_number, country_code,
@@ -365,7 +523,6 @@ func (ac *AuthController) UpdateProfile(c *gin.Context) {
 		       created_at, updated_at, last_login
 		FROM users WHERE id = ?
 	`
-
 	var profileSkills, profileAchievements, profileInterests models.JSONStringSlice
 	var lastLogin sql.NullTime
 	err = ac.db.QueryRow(query, userID).Scan(
@@ -382,7 +539,6 @@ func (ac *AuthController) UpdateProfile(c *gin.Context) {
 		&user.Preferences.Theme, &user.Preferences.Language, &user.Preferences.Timezone,
 		&user.CreatedAt, &user.UpdatedAt, &lastLogin,
 	)
-
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch updated profile"})
 		return
@@ -394,8 +550,6 @@ func (ac *AuthController) UpdateProfile(c *gin.Context) {
 	if lastLogin.Valid {
 		user.LastLogin = &lastLogin.Time
 	}
-
-	// Remove password from response
 	user.Password = ""
 
 	c.JSON(http.StatusOK, gin.H{
@@ -418,8 +572,6 @@ func (ac *AuthController) ChangePassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request body", "errors": err.Error()})
 		return
 	}
-
-	// Validate input
 	if err := middleware.ValidateStruct(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Validation failed", "errors": err})
 		return
@@ -427,7 +579,6 @@ func (ac *AuthController) ChangePassword(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// Fetch user with password
 	var user models.User
 	err := ac.db.QueryRowContext(ctx, "SELECT password FROM users WHERE id = ?", userID).Scan(&user.Password)
 	if err != nil {
@@ -439,175 +590,56 @@ func (ac *AuthController) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	// Check current password
 	if err := config.CheckPassword(req.CurrentPassword, user.Password); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Current password is incorrect"})
 		return
 	}
 
-	// Hash new password
 	hashedPassword, err := config.HashPassword(req.NewPassword)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to hash new password"})
 		return
 	}
 
-	// Update password
 	_, err = ac.db.ExecContext(ctx, "UPDATE users SET password = ?, updated_at = ? WHERE id = ?", hashedPassword, time.Now(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update password"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Password changed successfully",
-	})
-}
-
-// Logout handles user logout
-func (ac *AuthController) Logout(c *gin.Context) {
-	// In a real implementation, you might want to invalidate the token
-	// For JWT, this is typically done by maintaining a blacklist or using refresh tokens
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Logout successful",
-	})
-}
-
-// RefreshToken handles token refresh
-func (ac *AuthController) RefreshToken(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "User not authenticated"})
-		return
-	}
-
-	ctx := c.Request.Context()
-
-	// Fetch user
-	var user models.User
-	query := `
-		SELECT id, first_name, last_name, email, role
-		FROM users WHERE id = ?
-	`
-	err := ac.db.QueryRowContext(ctx, query, userID).Scan(
-		&user.ID, &user.FirstName, &user.LastName, &user.Email, &user.Role,
-	)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "User not found"})
-		return
-	}
-
-	// Generate new token
-	token, err := ac.generateToken(user)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to generate token"})
-		return
-	}
+	// Revoke all refresh tokens — forces re-login on all devices
+	ac.db.ExecContext(ctx, "DELETE FROM refresh_tokens WHERE user_id = ?", userID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "Token refreshed successfully",
-		"data":    gin.H{"token": token},
+		"message": "Password changed successfully. Please log in again.",
 	})
 }
 
-// generateToken generates a JWT token for the user
-func (ac *AuthController) generateToken(user models.User) (string, error) {
-	claims := jwt.MapClaims{
-		"userID":    user.ID,
-		"email":     user.Email,
-		"role":      user.Role,
-		"firstName": user.FirstName,
-		"lastName":  user.LastName,
-		"exp":       time.Now().Add(time.Hour * 24 * 7).Unix(), // 7 days
-		"iat":       time.Now().Unix(),
-		"jti":       uuid.New().String(),
-	}
+// ─────────────────────────────────────────────
+//  PLACEHOLDER HANDLERS
+// ─────────────────────────────────────────────
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(ac.cfg.JWTSecret))
-}
-
-// GoogleOAuth handles Google OAuth callback
 func (ac *AuthController) GoogleOAuth(c *gin.Context) {
-	// This is a placeholder for Google OAuth implementation
-	// In a real implementation, you would handle the OAuth flow here
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"success": false,
-		"message": "Google OAuth not implemented yet",
-	})
+	c.JSON(http.StatusNotImplemented, gin.H{"success": false, "message": "Google OAuth not implemented yet"})
 }
 
-// LinkedInOAuth handles LinkedIn OAuth callback
 func (ac *AuthController) LinkedInOAuth(c *gin.Context) {
-	// This is a placeholder for LinkedIn OAuth implementation
-	// In a real implementation, you would handle the OAuth flow here
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"success": false,
-		"message": "LinkedIn OAuth not implemented yet",
-	})
+	c.JSON(http.StatusNotImplemented, gin.H{"success": false, "message": "LinkedIn OAuth not implemented yet"})
 }
 
-// FacebookOAuth handles Facebook OAuth callback
 func (ac *AuthController) FacebookOAuth(c *gin.Context) {
-	// This is a placeholder for Facebook OAuth implementation
-	// In a real implementation, you would handle the OAuth flow here
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"success": false,
-		"message": "Facebook OAuth not implemented yet",
-	})
+	c.JSON(http.StatusNotImplemented, gin.H{"success": false, "message": "Facebook OAuth not implemented yet"})
 }
 
-// VerifyEmail handles email verification
 func (ac *AuthController) VerifyEmail(c *gin.Context) {
-	token := c.Param("token")
-	if token == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Token is required"})
-		return
-	}
-
-	// In a real implementation, you would verify the token and update user's email verification status
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"success": false,
-		"message": "Email verification not implemented yet",
-	})
+	c.JSON(http.StatusNotImplemented, gin.H{"success": false, "message": "Email verification not implemented yet"})
 }
 
-// ForgotPassword handles forgot password request
 func (ac *AuthController) ForgotPassword(c *gin.Context) {
-	var req struct {
-		Email string `json:"email" validate:"required,email"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request body"})
-		return
-	}
-
-	// In a real implementation, you would send a password reset email
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"success": false,
-		"message": "Forgot password not implemented yet",
-	})
+	c.JSON(http.StatusNotImplemented, gin.H{"success": false, "message": "Forgot password not implemented yet"})
 }
 
-// ResetPassword handles password reset
 func (ac *AuthController) ResetPassword(c *gin.Context) {
-	var req struct {
-		Token    string `json:"token" validate:"required"`
-		Password string `json:"password" validate:"required,min=6"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request body"})
-		return
-	}
-
-	// In a real implementation, you would verify the token and update the password
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"success": false,
-		"message": "Password reset not implemented yet",
-	})
+	c.JSON(http.StatusNotImplemented, gin.H{"success": false, "message": "Password reset not implemented yet"})
 }

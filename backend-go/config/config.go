@@ -18,7 +18,8 @@ type Config struct {
 	Port        string
 	MySQLURI    string
 	RedisURL    string
-	JWTSecret   string
+	JWTSecret        string
+	JWTRefreshSecret string
 	FrontendURL string
 
 	// OAuth Config
@@ -52,7 +53,8 @@ func LoadConfig() *Config {
 		Port:        getEnv("PORT", "8082"),
 		MySQLURI:    getEnv("MYSQL_URI", "root:root@tcp(localhost:3306)/mvsr_alumni?parseTime=true"),
 		RedisURL:    getEnv("REDIS_URL", "redis://localhost:6379"),
-		JWTSecret:   getEnv("JWT_SECRET", "your-super-secret-jwt-key"),
+		JWTSecret:        getEnv("JWT_SECRET", "your-super-secret-jwt-key-access"),
+		JWTRefreshSecret: getEnv("JWT_REFRESH_SECRET", "your-super-secret-jwt-key-refresh"),
 		FrontendURL: getEnv("FRONTEND_URL", "http://localhost:3000"),
 
 		// OAuth
