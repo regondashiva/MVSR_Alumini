@@ -174,6 +174,24 @@ func main() {
 		log.Fatal("Failed to create gallery table:", err)
 	}
 
+	// Create refresh_tokens table
+	refreshTokensTable := `
+	CREATE TABLE IF NOT EXISTS refresh_tokens (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		user_id INT NOT NULL,
+		token VARCHAR(512) NOT NULL UNIQUE,
+		expires_at DATETIME NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		CONSTRAINT fk_refresh_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+		INDEX idx_refresh_tokens_user_id (user_id),
+		INDEX idx_refresh_tokens_token (token(255))
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
+
+	_, err = db.Exec(refreshTokensTable)
+	if err != nil {
+		log.Fatal("Failed to create refresh_tokens table:", err)
+	}
+
 	fmt.Println("✅ Database schema created successfully!")
 	fmt.Println("📊 Tables created:")
 	fmt.Println("   - users")
@@ -181,6 +199,7 @@ func main() {
 	fmt.Println("   - news")
 	fmt.Println("   - jobs")
 	fmt.Println("   - gallery")
+	fmt.Println("   - refresh_tokens")
 	fmt.Println("🎯 Database: mvsr_alumni")
 	fmt.Println("🔧 MySQL connection: localhost:3306")
 }

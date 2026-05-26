@@ -3,6 +3,7 @@ package routes
 import (
 	"github.com/gin-gonic/gin"
 
+	"mvsr-backend/config"
 	"mvsr-backend/controllers"
 	"mvsr-backend/middleware"
 )
@@ -10,6 +11,7 @@ import (
 // SetupRoutes configures all the routes for the application
 func SetupRoutes(
 	router *gin.Engine,
+	cfg *config.Config,
 	authController *controllers.AuthController,
 	userController *controllers.UserController,
 	alumniController *controllers.AlumniController,
@@ -30,14 +32,17 @@ func SetupRoutes(
 	// API v1 routes
 	v1 := router.Group("/api/v1")
 	{
-		// Public routes
+		// ── Public routes ──────────────────────────────────────
 		public := v1.Group("")
 		{
-			// Authentication routes
 			auth := public.Group("/auth")
 			{
 				auth.POST("/register", authController.Register)
 				auth.POST("/login", authController.Login)
+				// refresh-token and logout are PUBLIC — they work with the
+				// refresh token in the body, not a Bearer access token
+				auth.POST("/refresh-token", authController.RefreshToken)
+				auth.POST("/logout", authController.Logout)
 				auth.POST("/forgot-password", authController.ForgotPassword)
 				auth.POST("/reset-password", authController.ResetPassword)
 				auth.POST("/verify-email/:token", authController.VerifyEmail)
@@ -46,7 +51,7 @@ func SetupRoutes(
 				auth.GET("/facebook", authController.FacebookOAuth)
 			}
 
-			// Public content routes
+			// Public content
 			public.GET("/news", newsController.GetNews)
 			public.GET("/news/:id", newsController.GetNews)
 			public.GET("/events", eventController.GetEvents)
@@ -55,26 +60,23 @@ func SetupRoutes(
 			public.GET("/jobs/:id", jobController.GetJob)
 			public.GET("/gallery", galleryController.GetGallery)
 			public.GET("/gallery/:id", galleryController.GetGalleryItem)
-
-			// Public user statistics
 			public.GET("/users/statistics", userController.GetUsersStatistics)
 		}
 
-		// Protected routes
+		// ── Protected routes (require valid access token) ──────
 		protected := v1.Group("")
-		protected.Use(middleware.Auth(nil)) // Will be configured with proper config
+		protected.Use(middleware.Auth(cfg))
 		{
-			// User routes
+			// User / profile
 			user := protected.Group("/users")
 			{
 				user.GET("/profile", authController.GetProfile)
 				user.PUT("/profile", authController.UpdateProfile)
 				user.POST("/change-password", authController.ChangePassword)
-				user.POST("/logout", authController.Logout)
-				user.POST("/refresh-token", authController.RefreshToken)
+				user.POST("/logout-all", authController.LogoutAll) // revoke all devices
 			}
 
-			// Event routes
+			// Events
 			events := protected.Group("/events")
 			{
 				events.POST("", eventController.CreateEvent)
@@ -86,7 +88,7 @@ func SetupRoutes(
 				events.GET("/stats", eventController.GetEventStats)
 			}
 
-			// News routes
+			// News
 			news := protected.Group("/news")
 			{
 				news.POST("", newsController.CreateNews)
@@ -99,7 +101,7 @@ func SetupRoutes(
 				news.POST("/:id/unlike", newsController.UnlikeNews)
 			}
 
-			// Job routes
+			// Jobs
 			jobs := protected.Group("/jobs")
 			{
 				jobs.POST("", jobController.CreateJob)
@@ -110,7 +112,7 @@ func SetupRoutes(
 				jobs.GET("/applications", jobController.GetJobApplications)
 			}
 
-			// Gallery routes
+			// Gallery
 			gallery := protected.Group("/gallery")
 			{
 				gallery.POST("", galleryController.CreateGalleryItem)
@@ -120,7 +122,7 @@ func SetupRoutes(
 				gallery.POST("/:id/unlike", galleryController.UnlikeGalleryItem)
 			}
 
-			// Alumni routes
+			// Alumni
 			alumni := protected.Group("/alumni")
 			{
 				alumni.GET("/directory", alumniController.GetApprovedAlumni)
@@ -134,9 +136,9 @@ func SetupRoutes(
 			}
 		}
 
-		// Admin routes
+		// ── Admin routes ───────────────────────────────────────
 		admin := v1.Group("/admin")
-		admin.Use(middleware.AdminAuth(nil)) // Will be configured with proper config
+		admin.Use(middleware.AdminAuth(cfg))
 		{
 			admin.GET("/users", userController.GetAllUsers)
 			admin.GET("/users/:id", userController.GetUser)
@@ -145,19 +147,14 @@ func SetupRoutes(
 			admin.POST("/users/:id/verify", userController.VerifyUser)
 			admin.POST("/users/:id/deactivate", userController.DeactivateUser)
 			admin.POST("/users/:id/activate", userController.ActivateUser)
-
-			// Role-based user endpoints
 			admin.GET("/users/role/:role", userController.GetUsersByRole)
 			admin.GET("/admins", userController.GetAdmins)
 			admin.GET("/students", userController.GetStudents)
 			admin.GET("/alumni-users", userController.GetAlumniUsers)
 			admin.GET("/users/statistics", userController.GetUsersStatistics)
-
-			// Registration approval endpoints
 			admin.GET("/pending-registrations", userController.GetPendingRegistrations)
 			admin.POST("/approve-registration/:id", userController.ApproveRegistration)
 			admin.POST("/reject-registration/:id", userController.RejectRegistration)
-
 			admin.GET("/stats", userController.GetSystemStats)
 			admin.GET("/logs", userController.GetSystemLogs)
 			admin.POST("/backup", userController.CreateBackup)
@@ -165,35 +162,23 @@ func SetupRoutes(
 		}
 	}
 
-	// Legacy API routes (for backward compatibility)
+	// ── Legacy /api routes (backward compatibility) ─────────
 	legacy := router.Group("/api")
 	{
-		// Authentication
 		legacy.POST("/auth/register", authController.Register)
 		legacy.POST("/auth/login", authController.Login)
+		legacy.POST("/auth/refresh-token", authController.RefreshToken)
 		legacy.POST("/auth/logout", authController.Logout)
-
-		// Users
 		legacy.GET("/users/profile", authController.GetProfile)
 		legacy.PUT("/users/profile", authController.UpdateProfile)
-
-		// Alumni Directory
 		legacy.GET("/alumni/approved", alumniController.GetApprovedAlumni)
 		legacy.GET("/alumni/search", alumniController.SearchAlumni)
-
-		// Events
 		legacy.GET("/events", eventController.GetEvents)
 		legacy.GET("/events/:id", eventController.GetEvent)
-
-		// News
 		legacy.GET("/news", newsController.GetNews)
 		legacy.GET("/news/:id", newsController.GetNews)
-
-		// Jobs
 		legacy.GET("/jobs", jobController.GetJobs)
 		legacy.GET("/jobs/:id", jobController.GetJob)
-
-		// Gallery
 		legacy.GET("/gallery", galleryController.GetGallery)
 		legacy.GET("/gallery/:id", galleryController.GetGalleryItem)
 	}
