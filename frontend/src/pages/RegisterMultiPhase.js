@@ -11,6 +11,8 @@ const RegisterMultiPhase = () => {
   const [loading, setLoading] = useState(false);
   const [selectedCollege, setSelectedCollege] = useState('');
   const [userType, setUserType] = useState('');
+  const [commandInput, setCommandInput] = useState('');
+  const showMode = commandInput.trim().toLowerCase() === 'show';
   const [registrationData, setRegistrationData] = useState({});
   
   const { register, handleSubmit, watch, formState: { errors } } = useForm();
@@ -46,6 +48,9 @@ const RegisterMultiPhase = () => {
       ]
     }
   };
+
+  // combined unique departments for faculty selection
+  const allDepartments = Array.from(new Set(Object.values(collegeData).flatMap(c => c.departments))).sort();
 
   const countries = [
     { code: '+91', name: 'India' },
@@ -136,13 +141,33 @@ const RegisterMultiPhase = () => {
       setRegistrationData({ ...registrationData, ...data, rollNumber });
       setCurrentPhase(2);
     } else if (currentPhase === 2) {
-      if (!selectedCollege) {
-        toast.error('Please select a college');
-        return;
-      }
       if (!userType) {
         toast.error('Please select user type');
         return;
+      }
+      if (userType === 'alumni') {
+        if (!selectedCollege) {
+          toast.error('Please select a college');
+          return;
+        }
+        if (!data.department) {
+          toast.error('Please select department');
+          return;
+        }
+        if (!data.passoutYear) {
+          toast.error('Please select passout year');
+          return;
+        }
+      }
+      if (userType === 'faculty') {
+        if (!data.facultyId) {
+          toast.error('Please enter Faculty ID');
+          return;
+        }
+        if (!data.facultyDepartment) {
+          toast.error('Please enter Department');
+          return;
+        }
       }
       // Update roll number if college changed
       const updatedRollNumber = generateRollNumber(selectedCollege, registrationData.firstName, registrationData.lastName);
@@ -177,15 +202,16 @@ const RegisterMultiPhase = () => {
         countryCode: data.countryCode,
         phoneNumber: data.phoneNumber,
         address: data.address,
-        college: selectedCollege,
-        department: data.department,
+        college: userType === 'alumni' ? selectedCollege : '',
+        department: userType === 'alumni' ? data.department : (data.facultyDepartment || ''),
         passoutYear: data.passoutYear,
         role: userType,
-        company: data.company || '',
-        experience: parseInt(data.experience) || 0,
-        roleDescription: data.roleDescription || '',
-        industry: data.industry || '',
-        skills: data.skills || ''
+        company: userType === 'alumni' ? (data.company || '') : '',
+        experience: userType === 'alumni' ? (parseInt(data.experience) || 0) : 0,
+        roleDescription: userType === 'alumni' ? (data.roleDescription || '') : (data.designation || ''),
+        industry: userType === 'alumni' ? (data.industry || '') : '',
+        skills: userType === 'alumni' ? (data.skills || '') : '',
+        facultyId: userType === 'faculty' ? (data.facultyId || '') : ''
       };
 
       const response = await fetch('/api/auth/register', {
@@ -404,79 +430,10 @@ const RegisterMultiPhase = () => {
       </div>
 
       <div>
-        <label htmlFor="college" className="block text-sm font-medium text-gray-700">
-          College *
-        </label>
-        <select
-          {...register('college', { required: 'College is required' })}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
-          onChange={(e) => setSelectedCollege(e.target.value)}
-        >
-          <option value="">Select college</option>
-          {colleges.map(college => (
-            <option key={college.id} value={college.id}>
-              {college.name}
-            </option>
-          ))}
-        </select>
-        {errors.college && (
-          <p className="mt-1 text-sm text-red-600">{errors.college.message}</p>
-        )}
-      </div>
-
-      {selectedCollege && (
-        <div>
-          <label htmlFor="department" className="block text-sm font-medium text-gray-700">
-            Department *
-          </label>
-          <select
-            {...register('department', { required: 'Department is required' })}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
-          >
-            <option value="">Select department</option>
-            {collegeData[selectedCollege]?.departments.map(dept => (
-              <option key={dept} value={dept}>{dept}</option>
-            ))}
-          </select>
-          {errors.department && (
-            <p className="mt-1 text-sm text-red-600">{errors.department.message}</p>
-          )}
-        </div>
-      )}
-
-      <div>
-        <label htmlFor="passoutYear" className="block text-sm font-medium text-gray-700">
-          Passout Year *
-        </label>
-        <select
-          {...register('passoutYear', { required: 'Passout year is required' })}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
-        >
-          <option value="">Select passout year</option>
-          {passoutYears.map(year => (
-            <option key={year} value={year}>{year}</option>
-          ))}
-        </select>
-        {errors.passoutYear && (
-          <p className="mt-1 text-sm text-red-600">{errors.passoutYear.message}</p>
-        )}
-      </div>
-
-      <div>
         <label className="block text-sm font-medium text-gray-700 mb-4">
           User Type *
         </label>
         <div className="space-y-3">
-          <label className="flex items-center">
-            <input
-              type="radio"
-              value="student"
-              {...register('userType', { required: 'User type is required' })}
-              onChange={(e) => setUserType(e.target.value)}
-              className="h-4 w-4 text-mvsr-600 focus:ring-mvsr-500 border-gray-300"
-            />
-            <span className="ml-2 text-sm text-gray-700">Register as Student</span>
-          </label>
           <label className="flex items-center">
             <input
               type="radio"
@@ -502,6 +459,92 @@ const RegisterMultiPhase = () => {
           <p className="mt-1 text-sm text-red-600">{errors.userType.message}</p>
         )}
       </div>
+
+      {/* Conditional fields revealed when user selects user type */}
+      {userType === 'alumni' && (
+        <>
+          <div>
+            <label htmlFor="college" className="block text-sm font-medium text-gray-700">
+              College *
+            </label>
+            <select
+              {...register('college')}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
+              onChange={(e) => setSelectedCollege(e.target.value)}
+            >
+              <option value="">Select college</option>
+              {colleges.map(college => (
+                <option key={college.id} value={college.id}>
+                  {college.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {selectedCollege && (
+            <div>
+              <label htmlFor="department" className="block text-sm font-medium text-gray-700">
+                Department *
+              </label>
+              <select
+                {...register('department')}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
+              >
+                <option value="">Select department</option>
+                {collegeData[selectedCollege]?.departments.map(dept => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label htmlFor="passoutYear" className="block text-sm font-medium text-gray-700">
+              Passout Year *
+            </label>
+            <select
+              {...register('passoutYear')}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
+            >
+              <option value="">Select passout year</option>
+              {passoutYears.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+          </div>
+        </>
+      )}
+
+      {userType === 'faculty' && (
+        <>
+          <div>
+            <label htmlFor="facultyId" className="block text-sm font-medium text-gray-700">
+              Faculty ID *
+            </label>
+            <input
+              {...register('facultyId')}
+              type="text"
+              className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
+              placeholder="Enter Faculty ID"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="facultyDepartment" className="block text-sm font-medium text-gray-700">
+              Department *
+            </label>
+            <select
+              {...register('facultyDepartment')}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
+            >
+              <option value="">Select department</option>
+              {allDepartments.map(dept => (
+                <option key={dept} value={dept}>{dept}</option>
+              ))}
+            </select>
+          </div>
+        </>
+      )}
     </div>
   );
 
@@ -512,120 +555,155 @@ const RegisterMultiPhase = () => {
         <p className="text-gray-600 mt-2">Provide your professional details</p>
       </div>
 
-      <div>
-        <label htmlFor="company" className="block text-sm font-medium text-gray-700">
-          Company *
-        </label>
-        <select
-          {...register('company', { required: 'Company is required' })}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
-        >
-          <option value="">Select company</option>
-          {companies.map(company => (
-            <option key={company} value={company}>{company}</option>
-          ))}
-          <option value="other">Other</option>
-        </select>
-        {errors.company && (
-          <p className="mt-1 text-sm text-red-600">{errors.company.message}</p>
-        )}
-        {watch('company') === 'other' && (
-          <input
-            {...register('otherCompany', { required: 'Please specify company' })}
-            type="text"
-            className="mt-2 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
-            placeholder="Enter company name"
-          />
-        )}
-      </div>
+      {userType === 'alumni' && (
+        <>
+          <div>
+            <label htmlFor="company" className="block text-sm font-medium text-gray-700">
+              Company *
+            </label>
+            <select
+              {...register('company', { required: 'Company is required' })}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
+            >
+              <option value="">Select company</option>
+              {companies.map(company => (
+                <option key={company} value={company}>{company}</option>
+              ))}
+              <option value="other">Other</option>
+            </select>
+            {errors.company && (
+              <p className="mt-1 text-sm text-red-600">{errors.company.message}</p>
+            )}
+            {watch('company') === 'other' && (
+              <input
+                {...register('otherCompany', { required: 'Please specify company' })}
+                type="text"
+                className="mt-2 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
+                placeholder="Enter company name"
+              />
+            )}
+          </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <label htmlFor="experience" className="block text-sm font-medium text-gray-700">
-            Total Years of Experience *
-          </label>
-          <input
-            {...register('experience', { required: 'Experience is required' })}
-            type="number"
-            min="0"
-            max="50"
-            className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
-            placeholder="Years of experience"
-          />
-          {errors.experience && (
-            <p className="mt-1 text-sm text-red-600">{errors.experience.message}</p>
-          )}
-        </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label htmlFor="experience" className="block text-sm font-medium text-gray-700">
+                Total Years of Experience *
+              </label>
+              <input
+                {...register('experience', { required: 'Experience is required' })}
+                type="number"
+                min="0"
+                max="50"
+                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
+                placeholder="Years of experience"
+              />
+              {errors.experience && (
+                <p className="mt-1 text-sm text-red-600">{errors.experience.message}</p>
+              )}
+            </div>
 
-        <div>
-          <label htmlFor="role" className="block text-sm font-medium text-gray-700">
-            Role Description *
-          </label>
-          <input
-            {...register('role', { required: 'Role is required' })}
-            type="text"
-            className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
-            placeholder="Your current role"
-          />
-          {errors.role && (
-            <p className="mt-1 text-sm text-red-600">{errors.role.message}</p>
-          )}
-        </div>
-      </div>
+            <div>
+              <label htmlFor="role" className="block text-sm font-medium text-gray-700">
+                Role Description *
+              </label>
+              <input
+                {...register('role', { required: 'Role is required' })}
+                type="text"
+                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
+                placeholder="Your current role"
+              />
+              {errors.role && (
+                <p className="mt-1 text-sm text-red-600">{errors.role.message}</p>
+              )}
+            </div>
+          </div>
 
-      <div>
-        <label htmlFor="industry" className="block text-sm font-medium text-gray-700">
-          Industry Type *
-        </label>
-        <select
-          {...register('industry', { required: 'Industry is required' })}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
-        >
-          <option value="">Select industry</option>
-          {industries.map(industry => (
-            <option key={industry} value={industry}>{industry}</option>
-          ))}
-          <option value="other">Other</option>
-        </select>
-        {errors.industry && (
-          <p className="mt-1 text-sm text-red-600">{errors.industry.message}</p>
-        )}
-        {watch('industry') === 'other' && (
-          <input
-            {...register('otherIndustry', { required: 'Please specify industry' })}
-            type="text"
-            className="mt-2 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
-            placeholder="Enter industry type"
-          />
-        )}
-      </div>
+          <div>
+            <label htmlFor="industry" className="block text-sm font-medium text-gray-700">
+              Industry Type *
+            </label>
+            <select
+              {...register('industry', { required: 'Industry is required' })}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
+            >
+              <option value="">Select industry</option>
+              {industries.map(industry => (
+                <option key={industry} value={industry}>{industry}</option>
+              ))}
+              <option value="other">Other</option>
+            </select>
+            {errors.industry && (
+              <p className="mt-1 text-sm text-red-600">{errors.industry.message}</p>
+            )}
+            {watch('industry') === 'other' && (
+              <input
+                {...register('otherIndustry', { required: 'Please specify industry' })}
+                type="text"
+                className="mt-2 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
+                placeholder="Enter industry type"
+              />
+            )}
+          </div>
 
-      <div>
-        <label htmlFor="skills" className="block text-sm font-medium text-gray-700">
-          Process Skills *
-        </label>
-        <select
-          {...register('skills', { required: 'Skills are required' })}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
-        >
-          <option value="">Select skills</option>
-          {processSkills.map(skill => (
-            <option key={skill} value={skill}>{skill}</option>
-          ))}
-          <option value="other">Other</option>
-        </select>
-        {errors.skills && (
-          <p className="mt-1 text-sm text-red-600">{errors.skills.message}</p>
-        )}
-        {watch('skills') === 'other' && (
-          <input
-            {...register('otherSkills', { required: 'Please specify skills' })}
-            type="text"
-            className="mt-2 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
-            placeholder="Enter your skills"
-          />
-        )}
-      </div>
+          <div>
+            <label htmlFor="skills" className="block text-sm font-medium text-gray-700">
+              Process Skills *
+            </label>
+            <select
+              {...register('skills', { required: 'Skills are required' })}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
+            >
+              <option value="">Select skills</option>
+              {processSkills.map(skill => (
+                <option key={skill} value={skill}>{skill}</option>
+              ))}
+              <option value="other">Other</option>
+            </select>
+            {errors.skills && (
+              <p className="mt-1 text-sm text-red-600">{errors.skills.message}</p>
+            )}
+            {watch('skills') === 'other' && (
+              <input
+                {...register('otherSkills', { required: 'Please specify skills' })}
+                type="text"
+                className="mt-2 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
+                placeholder="Enter your skills"
+              />
+            )}
+          </div>
+        </>
+      )}
+
+      {userType === 'faculty' && (
+        <>
+          <div>
+            <label htmlFor="facultyId" className="block text-sm font-medium text-gray-700">
+              Faculty ID
+            </label>
+            <input
+              {...register('facultyId')}
+              type="text"
+              className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
+              placeholder="Faculty ID (if any)"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="facultyDepartment" className="block text-sm font-medium text-gray-700">
+              Department
+            </label>
+            <select
+              {...register('facultyDepartment')}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
+            >
+              <option value="">Select department</option>
+              {allDepartments.map(dept => (
+                <option key={dept} value={dept}>{dept}</option>
+              ))}
+            </select>
+          </div>
+        </>
+      )}
 
       <div className="border-t pt-6">
         <p className="text-sm font-medium text-gray-700 mb-4">Additional Options:</p>
@@ -667,6 +745,14 @@ const RegisterMultiPhase = () => {
               Sign in here
             </Link>
           </p>
+          {/* <div className="mt-4 flex justify-center">
+            <input
+              value={commandInput}
+              onChange={(e) => setCommandInput(e.target.value)}
+              placeholder='Type "show" to reveal registration options'
+              className="w-80 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 text-sm"
+            />
+          </div> */}
         </div>
 
         {/* Progress Indicator */}
