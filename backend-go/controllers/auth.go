@@ -10,7 +10,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"go.mongodb.org/mongo-driver/bson"
 
 	"mvsr-backend/config"
 	"mvsr-backend/middleware"
@@ -315,28 +314,23 @@ func (ac *AuthController) UpdateProfile(c *gin.Context) {
 	// Build dynamic UPDATE query
 	var updates []string
 	var args []interface{}
-	argIndex := 1
 
 	if req.FirstName != nil {
-		updates = append(updates, fmt.Sprintf("first_name = $%d", argIndex))
+		updates = append(updates, "first_name = ?")
 		args = append(args, *req.FirstName)
-		argIndex++
 	}
 	if req.LastName != nil {
-		updates = append(updates, fmt.Sprintf("last_name = $%d", argIndex))
+		updates = append(updates, "last_name = ?")
 		args = append(args, *req.LastName)
-		argIndex++
 	}
 	if req.Phone != nil {
-		updates = append(updates, fmt.Sprintf("phone_number = $%d", argIndex))
+		updates = append(updates, "phone_number = ?")
 		args = append(args, *req.Phone)
-		argIndex++
 	}
 
 	// Always update updated_at
-	updates = append(updates, fmt.Sprintf("updated_at = $%d", argIndex))
+	updates = append(updates, "updated_at = ?")
 	args = append(args, time.Now())
-	argIndex++
 
 	// Add user ID as last parameter
 	args = append(args, userID)
@@ -347,7 +341,7 @@ func (ac *AuthController) UpdateProfile(c *gin.Context) {
 	}
 
 	// Execute UPDATE query
-	query := fmt.Sprintf("UPDATE users SET %s WHERE id = $%d", strings.Join(updates, ", "), argIndex)
+	query := fmt.Sprintf("UPDATE users SET %s WHERE id = ?", strings.Join(updates, ", "))
 	_, err := ac.db.Exec(query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update profile"})
@@ -356,7 +350,7 @@ func (ac *AuthController) UpdateProfile(c *gin.Context) {
 
 	// Fetch updated user
 	var user models.User
-	query := `
+	query = `
 		SELECT id, first_name, last_name, email, roll_number, country_code,
 		       phone_number, address, college, department, passout_year, role,
 		       is_verified, is_active, profile_bio, profile_company, profile_role,
@@ -432,13 +426,16 @@ func (ac *AuthController) ChangePassword(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
 	// Fetch user with password
 	var user models.User
-	err := db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	err := ac.db.QueryRowContext(ctx, "SELECT password FROM users WHERE id = ?", userID).Scan(&user.Password)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch user"})
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "User not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch user"})
+		}
 		return
 	}
 
@@ -456,10 +453,7 @@ func (ac *AuthController) ChangePassword(c *gin.Context) {
 	}
 
 	// Update password
-	_, err = db.Collection("users").UpdateOne(ctx, bson.M{"_id": userID}, bson.M{"$set": bson.M{
-		"password":  hashedPassword,
-		"updatedAt": time.Now(),
-	}})
+	_, err = ac.db.ExecContext(ctx, "UPDATE users SET password = ?, updated_at = ? WHERE id = ?", hashedPassword, time.Now(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update password"})
 		return
@@ -490,11 +484,16 @@ func (ac *AuthController) RefreshToken(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
 	// Fetch user
 	var user models.User
-	err := db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	query := `
+		SELECT id, first_name, last_name, email, role
+		FROM users WHERE id = ?
+	`
+	err := ac.db.QueryRowContext(ctx, query, userID).Scan(
+		&user.ID, &user.FirstName, &user.LastName, &user.Email, &user.Role,
+	)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "User not found"})
 		return

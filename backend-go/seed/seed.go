@@ -510,7 +510,7 @@ func getRealGallery() []RealGallery {
 
 func main() {
 	// Connect to MySQL database
-	dsn := "root:Shiva@56@tcp(localhost:3306)/mvsr_alumni?parseTime=true"
+	dsn := "root:root@tcp(localhost:3306)/mvsr_alumni?parseTime=true"
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
@@ -542,10 +542,14 @@ func main() {
 
 	realEvents := getRealEvents()
 	for _, event := range realEvents {
+		orgJSON, _ := json.Marshal(map[string]string{
+			"id":   "1",
+			"name": event.Organizer,
+		})
 		_, err = db.Exec(`
-			INSERT INTO events (title, description, event_date, event_time, location, organizer, category, image_url, is_active, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, event.Title, event.Description, event.EventDate, event.EventTime, event.Location, event.Organizer, event.Category, event.ImageURL, true, time.Now(), time.Now())
+			INSERT INTO events (title, description, event_date, event_time, end_time, location, category, type, status, organizer, attendees, max_attendees, current_attendees, image_url, tags, is_featured, is_public, registration_deadline, created_by, is_active, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, event.Title, event.Description, event.EventDate, event.EventTime, "", event.Location, event.Category, "offline", "upcoming", string(orgJSON), "[]", 100, 0, event.ImageURL, "[]", false, true, nil, 1, true, time.Now(), time.Now())
 
 		if err != nil {
 			log.Printf("Failed to insert event: %v", err)

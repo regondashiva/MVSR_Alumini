@@ -1,13 +1,15 @@
 package controllers
 
 import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
 
 	"mvsr-backend/config"
 	"mvsr-backend/middleware"
@@ -16,10 +18,14 @@ import (
 
 type EventController struct {
 	cfg *config.Config
+	db  *sql.DB
 }
 
 func NewEventController(cfg *config.Config) *EventController {
-	return &EventController{cfg: cfg}
+	return &EventController{
+		cfg: cfg,
+		db:  config.GetDatabase(),
+	}
 }
 
 // CreateEvent handles creating a new event
@@ -43,11 +49,10 @@ func (ec *EventController) CreateEvent(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	// Create event
+	// Create event object
+	now := time.Now()
 	event := models.Event{
-		ID:                   primitive.NewObjectID(),
 		Title:                req.Title,
 		Description:          req.Description,
 		Date:                 req.Date,
@@ -58,7 +63,7 @@ func (ec *EventController) CreateEvent(c *gin.Context) {
 		Type:                 req.Type,
 		Status:               "upcoming",
 		Organizer:            req.Organizer,
-		Attendees:            []models.EventAttendee{},
+		Attendees:            models.EventAttendees{},
 		MaxAttendees:         req.MaxAttendees,
 		CurrentAttendees:     0,
 		Image:                req.Image,
@@ -66,17 +71,29 @@ func (ec *EventController) CreateEvent(c *gin.Context) {
 		IsFeatured:           false,
 		IsPublic:             req.IsPublic,
 		RegistrationDeadline: req.RegistrationDeadline,
-		CreatedAt:            time.Now(),
-		UpdatedAt:            time.Now(),
-		CreatedBy:            userID.(primitive.ObjectID),
+		CreatedAt:            now,
+		UpdatedAt:            now,
+		CreatedBy:            userID.(int),
 	}
 
 	// Insert event
-	_, err := db.Collection("events").InsertOne(ctx, event)
+	query := `
+		INSERT INTO events (title, description, event_date, event_time, end_time, location, category, type, status, organizer, attendees, max_attendees, current_attendees, image_url, tags, is_featured, is_public, registration_deadline, created_by, is_active, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?, ?)
+	`
+
+	res, err := ec.db.ExecContext(ctx, query,
+		event.Title, event.Description, event.Date, event.Time, event.EndTime, event.Location, event.Category, event.Type, event.Status,
+		event.Organizer, event.Attendees, event.MaxAttendees, event.CurrentAttendees, event.Image, event.Tags,
+		event.IsFeatured, event.IsPublic, event.RegistrationDeadline, event.CreatedBy, event.CreatedAt, event.UpdatedAt,
+	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to create event"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to create event", "error": err.Error()})
 		return
 	}
+
+	lastID, _ := res.LastInsertId()
+	event.ID = int(lastID)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
@@ -94,44 +111,45 @@ func (ec *EventController) GetEvents(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
 	// Build filter query
-	query := bson.M{}
+	query := `
+		SELECT id, title, description, event_date, event_time, end_time, location, category, type, status, organizer, attendees, max_attendees, current_attendees, image_url, tags, is_featured, is_public, registration_deadline, created_by, created_at, updated_at
+		FROM events
+		WHERE is_active = true
+	`
+	var args []interface{}
+
 	if filter.Category != "" {
-		query["category"] = filter.Category
+		query += " AND category = ?"
+		args = append(args, filter.Category)
 	}
 	if filter.Type != "" {
-		query["type"] = filter.Type
+		query += " AND type = ?"
+		args = append(args, filter.Type)
 	}
 	if filter.Status != "" {
-		query["status"] = filter.Status
+		query += " AND status = ?"
+		args = append(args, filter.Status)
 	}
 	if filter.Search != "" {
-		query["$or"] = []bson.M{
-			{"title": bson.M{"$regex": filter.Search, "$options": "i"}},
-			{"description": bson.M{"$regex": filter.Search, "$options": "i"}},
-			{"location": bson.M{"$regex": filter.Search, "$options": "i"}},
+		query += " AND (title LIKE ? OR description LIKE ? OR location LIKE ?)"
+		args = append(args, "%"+filter.Search+"%", "%"+filter.Search+"%", "%"+filter.Search+"%")
+	}
+	if filter.DateFrom != "" {
+		if dateFrom, err := time.Parse("2006-01-02", filter.DateFrom); err == nil {
+			query += " AND event_date >= ?"
+			args = append(args, dateFrom)
 		}
 	}
-	if filter.DateFrom != "" || filter.DateTo != "" {
-		dateQuery := bson.M{}
-		if filter.DateFrom != "" {
-			if dateFrom, err := time.Parse("2006-01-02", filter.DateFrom); err == nil {
-				dateQuery["$gte"] = dateFrom
-			}
-		}
-		if filter.DateTo != "" {
-			if dateTo, err := time.Parse("2006-01-02", filter.DateTo); err == nil {
-				dateQuery["$lte"] = dateTo
-			}
-		}
-		if len(dateQuery) > 0 {
-			query["date"] = dateQuery
+	if filter.DateTo != "" {
+		if dateTo, err := time.Parse("2006-01-02", filter.DateTo); err == nil {
+			query += " AND event_date <= ?"
+			args = append(args, dateTo)
 		}
 	}
 
-	// Set default values
+	// Set default pagination values
 	if filter.Page <= 0 {
 		filter.Page = 1
 	}
@@ -142,24 +160,45 @@ func (ec *EventController) GetEvents(c *gin.Context) {
 		filter.Limit = 100
 	}
 
-	// Fetch events
-	cursor, err := db.Collection("events").Find(ctx, query)
+	// Get total count
+	countQuery := "SELECT COUNT(*) FROM (" + query + ") AS count_table"
+	var total int
+	err := ec.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch events"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to count events", "error": err.Error()})
 		return
 	}
+
+	// Add order by and pagination
+	query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	args = append(args, filter.Limit, (filter.Page-1)*filter.Limit)
+
+	// Fetch events
+	rows, err := ec.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch events", "error": err.Error()})
+		return
+	}
+	defer rows.Close()
 
 	var events []models.Event
-	if err := cursor.All(ctx, &events); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to decode events"})
-		return
-	}
-
-	// Get total count
-	total, err := db.Collection("events").CountDocuments(ctx, query)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to count events"})
-		return
+	for rows.Next() {
+		var event models.Event
+		var eventDate time.Time
+		var eventTime string
+		err := rows.Scan(
+			&event.ID, &event.Title, &event.Description, &eventDate, &eventTime, &event.EndTime,
+			&event.Location, &event.Category, &event.Type, &event.Status, &event.Organizer, &event.Attendees,
+			&event.MaxAttendees, &event.CurrentAttendees, &event.Image, &event.Tags, &event.IsFeatured,
+			&event.IsPublic, &event.RegistrationDeadline, &event.CreatedBy, &event.CreatedAt, &event.UpdatedAt,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to scan event data", "error": err.Error()})
+			return
+		}
+		event.Date = eventDate
+		event.Time = eventTime
+		events = append(events, event)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -171,7 +210,7 @@ func (ec *EventController) GetEvents(c *gin.Context) {
 				"page":  filter.Page,
 				"limit": filter.Limit,
 				"total": total,
-				"pages": (total + int64(filter.Limit) - 1) / int64(filter.Limit),
+				"pages": (total + filter.Limit - 1) / filter.Limit,
 			},
 		},
 	})
@@ -179,31 +218,39 @@ func (ec *EventController) GetEvents(c *gin.Context) {
 
 // GetEvent handles fetching a single event
 func (ec *EventController) GetEvent(c *gin.Context) {
-	eventID := c.Param("id")
-	if eventID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Event ID is required"})
-		return
-	}
-
-	objectID, err := primitive.ObjectIDFromHex(eventID)
+	eventID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid event ID"})
 		return
 	}
 
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
+
+	query := `
+		SELECT id, title, description, event_date, event_time, end_time, location, category, type, status, organizer, attendees, max_attendees, current_attendees, image_url, tags, is_featured, is_public, registration_deadline, created_by, created_at, updated_at
+		FROM events
+		WHERE id = ? AND is_active = true
+	`
 
 	var event models.Event
-	err = db.Collection("events").FindOne(ctx, bson.M{"_id": objectID}).Decode(&event)
+	var eventDate time.Time
+	var eventTime string
+	err = ec.db.QueryRowContext(ctx, query, eventID).Scan(
+		&event.ID, &event.Title, &event.Description, &eventDate, &eventTime, &event.EndTime,
+		&event.Location, &event.Category, &event.Type, &event.Status, &event.Organizer, &event.Attendees,
+		&event.MaxAttendees, &event.CurrentAttendees, &event.Image, &event.Tags, &event.IsFeatured,
+		&event.IsPublic, &event.RegistrationDeadline, &event.CreatedBy, &event.CreatedAt, &event.UpdatedAt,
+	)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
+		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Event not found"})
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch event"})
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch event", "error": err.Error()})
 		}
 		return
 	}
+	event.Date = eventDate
+	event.Time = eventTime
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -214,13 +261,7 @@ func (ec *EventController) GetEvent(c *gin.Context) {
 
 // UpdateEvent handles updating an event
 func (ec *EventController) UpdateEvent(c *gin.Context) {
-	eventID := c.Param("id")
-	if eventID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Event ID is required"})
-		return
-	}
-
-	objectID, err := primitive.ObjectIDFromHex(eventID)
+	eventID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid event ID"})
 		return
@@ -245,87 +286,124 @@ func (ec *EventController) UpdateEvent(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
 	// Check if event exists and user has permission
-	var event models.Event
-	err = db.Collection("events").FindOne(ctx, bson.M{"_id": objectID}).Decode(&event)
+	var createdBy int
+	err = ec.db.QueryRowContext(ctx, "SELECT created_by FROM events WHERE id = ? AND is_active = true", eventID).Scan(&createdBy)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
+		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Event not found"})
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch event"})
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch event", "error": err.Error()})
 		}
 		return
 	}
 
-	// Check if user is the creator or admin
-	if event.CreatedBy != userID.(primitive.ObjectID) {
+	// Check if user is the creator
+	if createdBy != userID.(int) {
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Permission denied"})
 		return
 	}
 
-	// Build update document
-	update := bson.M{"updatedAt": time.Now()}
+	// Build update statement dynamically
+	var updates []string
+	var args []interface{}
+
 	if req.Title != nil {
-		update["title"] = *req.Title
+		updates = append(updates, "title = ?")
+		args = append(args, *req.Title)
 	}
 	if req.Description != nil {
-		update["description"] = *req.Description
+		updates = append(updates, "description = ?")
+		args = append(args, *req.Description)
 	}
 	if req.Date != nil {
-		update["date"] = *req.Date
+		updates = append(updates, "event_date = ?")
+		args = append(args, *req.Date)
 	}
 	if req.Time != nil {
-		update["time"] = *req.Time
+		updates = append(updates, "event_time = ?")
+		args = append(args, *req.Time)
 	}
 	if req.EndTime != nil {
-		update["endTime"] = *req.EndTime
+		updates = append(updates, "end_time = ?")
+		args = append(args, *req.EndTime)
 	}
 	if req.Location != nil {
-		update["location"] = *req.Location
+		updates = append(updates, "location = ?")
+		args = append(args, *req.Location)
 	}
 	if req.Category != nil {
-		update["category"] = *req.Category
+		updates = append(updates, "category = ?")
+		args = append(args, *req.Category)
 	}
 	if req.Type != nil {
-		update["type"] = *req.Type
+		updates = append(updates, "type = ?")
+		args = append(args, *req.Type)
 	}
 	if req.Status != nil {
-		update["status"] = *req.Status
+		updates = append(updates, "status = ?")
+		args = append(args, *req.Status)
 	}
 	if req.MaxAttendees != nil {
-		update["maxAttendees"] = *req.MaxAttendees
+		updates = append(updates, "max_attendees = ?")
+		args = append(args, *req.MaxAttendees)
 	}
 	if req.Image != nil {
-		update["image"] = *req.Image
+		updates = append(updates, "image_url = ?")
+		args = append(args, *req.Image)
 	}
 	if req.Tags != nil {
-		update["tags"] = *req.Tags
+		updates = append(updates, "tags = ?")
+		tagsJSON, _ := json.Marshal(*req.Tags)
+		args = append(args, string(tagsJSON))
 	}
 	if req.IsFeatured != nil {
-		update["isFeatured"] = *req.IsFeatured
+		updates = append(updates, "is_featured = ?")
+		args = append(args, *req.IsFeatured)
 	}
 	if req.IsPublic != nil {
-		update["isPublic"] = *req.IsPublic
+		updates = append(updates, "is_public = ?")
+		args = append(args, *req.IsPublic)
 	}
 	if req.RegistrationDeadline != nil {
-		update["registrationDeadline"] = *req.RegistrationDeadline
+		updates = append(updates, "registration_deadline = ?")
+		args = append(args, *req.RegistrationDeadline)
 	}
 
-	// Update event
-	_, err = db.Collection("events").UpdateOne(ctx, bson.M{"_id": objectID}, bson.M{"$set": update})
+	if len(updates) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "No fields to update"})
+		return
+	}
+
+	updates = append(updates, "updated_at = ?")
+	args = append(args, time.Now())
+
+	args = append(args, eventID)
+
+	query := fmt.Sprintf("UPDATE events SET %s WHERE id = ?", strings.Join(updates, ", "))
+	_, err = ec.db.ExecContext(ctx, query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update event"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update event", "error": err.Error()})
 		return
 	}
 
 	// Fetch updated event
-	err = db.Collection("events").FindOne(ctx, bson.M{"_id": objectID}).Decode(&event)
+	var event models.Event
+	var eventDate time.Time
+	var eventTime string
+	err = ec.db.QueryRowContext(ctx, "SELECT id, title, description, event_date, event_time, end_time, location, category, type, status, organizer, attendees, max_attendees, current_attendees, image_url, tags, is_featured, is_public, registration_deadline, created_by, created_at, updated_at FROM events WHERE id = ?", eventID).Scan(
+		&event.ID, &event.Title, &event.Description, &eventDate, &eventTime, &event.EndTime,
+		&event.Location, &event.Category, &event.Type, &event.Status, &event.Organizer, &event.Attendees,
+		&event.MaxAttendees, &event.CurrentAttendees, &event.Image, &event.Tags, &event.IsFeatured,
+		&event.IsPublic, &event.RegistrationDeadline, &event.CreatedBy, &event.CreatedAt, &event.UpdatedAt,
+	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch updated event"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to retrieve updated event", "error": err.Error()})
 		return
 	}
+	event.Date = eventDate
+	event.Time = eventTime
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -336,13 +414,7 @@ func (ec *EventController) UpdateEvent(c *gin.Context) {
 
 // DeleteEvent handles deleting an event
 func (ec *EventController) DeleteEvent(c *gin.Context) {
-	eventID := c.Param("id")
-	if eventID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Event ID is required"})
-		return
-	}
-
-	objectID, err := primitive.ObjectIDFromHex(eventID)
+	eventID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid event ID"})
 		return
@@ -355,30 +427,29 @@ func (ec *EventController) DeleteEvent(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
 	// Check if event exists and user has permission
-	var event models.Event
-	err = db.Collection("events").FindOne(ctx, bson.M{"_id": objectID}).Decode(&event)
+	var createdBy int
+	err = ec.db.QueryRowContext(ctx, "SELECT created_by FROM events WHERE id = ? AND is_active = true", eventID).Scan(&createdBy)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
+		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Event not found"})
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch event"})
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch event", "error": err.Error()})
 		}
 		return
 	}
 
-	// Check if user is the creator or admin
-	if event.CreatedBy != userID.(primitive.ObjectID) {
+	// Check if user is the creator
+	if createdBy != userID.(int) {
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Permission denied"})
 		return
 	}
 
 	// Delete event
-	_, err = db.Collection("events").DeleteOne(ctx, bson.M{"_id": objectID})
+	_, err = ec.db.ExecContext(ctx, "DELETE FROM events WHERE id = ?", eventID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to delete event"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to delete event", "error": err.Error()})
 		return
 	}
 
@@ -390,13 +461,7 @@ func (ec *EventController) DeleteEvent(c *gin.Context) {
 
 // RegisterForEvent handles event registration
 func (ec *EventController) RegisterForEvent(c *gin.Context) {
-	eventID := c.Param("id")
-	if eventID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Event ID is required"})
-		return
-	}
-
-	objectID, err := primitive.ObjectIDFromHex(eventID)
+	eventID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid event ID"})
 		return
@@ -409,19 +474,27 @@ func (ec *EventController) RegisterForEvent(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
 	// Fetch event
 	var event models.Event
-	err = db.Collection("events").FindOne(ctx, bson.M{"_id": objectID}).Decode(&event)
+	var eventDate time.Time
+	var eventTime string
+	err = ec.db.QueryRowContext(ctx, "SELECT id, title, description, event_date, event_time, end_time, location, category, type, status, organizer, attendees, max_attendees, current_attendees, image_url, tags, is_featured, is_public, registration_deadline, created_by, created_at, updated_at FROM events WHERE id = ? AND is_active = true", eventID).Scan(
+		&event.ID, &event.Title, &event.Description, &eventDate, &eventTime, &event.EndTime,
+		&event.Location, &event.Category, &event.Type, &event.Status, &event.Organizer, &event.Attendees,
+		&event.MaxAttendees, &event.CurrentAttendees, &event.Image, &event.Tags, &event.IsFeatured,
+		&event.IsPublic, &event.RegistrationDeadline, &event.CreatedBy, &event.CreatedAt, &event.UpdatedAt,
+	)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
+		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Event not found"})
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch event"})
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch event", "error": err.Error()})
 		}
 		return
 	}
+	event.Date = eventDate
+	event.Time = eventTime
 
 	// Check if registration is still open
 	if event.RegistrationDeadline != nil && time.Now().After(*event.RegistrationDeadline) {
@@ -437,7 +510,7 @@ func (ec *EventController) RegisterForEvent(c *gin.Context) {
 
 	// Check if user is already registered
 	for _, attendee := range event.Attendees {
-		if attendee.UserID == userID.(primitive.ObjectID) {
+		if attendee.UserID == userID.(int) {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Already registered for this event"})
 			return
 		}
@@ -445,15 +518,17 @@ func (ec *EventController) RegisterForEvent(c *gin.Context) {
 
 	// Fetch user details
 	var user models.User
-	err = db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	err = ec.db.QueryRowContext(ctx, "SELECT first_name, last_name, email, country_code, phone_number FROM users WHERE id = ?", userID).Scan(
+		&user.FirstName, &user.LastName, &user.Email, &user.CountryCode, &user.PhoneNumber,
+	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch user details"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch user details", "error": err.Error()})
 		return
 	}
 
 	// Add attendee
 	attendee := models.EventAttendee{
-		UserID:       userID.(primitive.ObjectID),
+		UserID:       userID.(int),
 		Name:         user.FirstName + " " + user.LastName,
 		Email:        user.Email,
 		Phone:        user.CountryCode + " " + user.PhoneNumber,
@@ -461,13 +536,11 @@ func (ec *EventController) RegisterForEvent(c *gin.Context) {
 		Status:       "registered",
 	}
 
-	_, err = db.Collection("events").UpdateOne(ctx, bson.M{"_id": objectID}, bson.M{
-		"$push": bson.M{"attendees": attendee},
-		"$inc":  bson.M{"currentAttendees": 1},
-		"$set":  bson.M{"updatedAt": time.Now()},
-	})
+	event.Attendees = append(event.Attendees, attendee)
+
+	_, err = ec.db.ExecContext(ctx, "UPDATE events SET attendees = ?, current_attendees = current_attendees + 1, updated_at = ? WHERE id = ?", event.Attendees, time.Now(), eventID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to register for event"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to register for event", "error": err.Error()})
 		return
 	}
 
@@ -479,13 +552,7 @@ func (ec *EventController) RegisterForEvent(c *gin.Context) {
 
 // UnregisterFromEvent handles event unregistration
 func (ec *EventController) UnregisterFromEvent(c *gin.Context) {
-	eventID := c.Param("id")
-	if eventID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Event ID is required"})
-		return
-	}
-
-	objectID, err := primitive.ObjectIDFromHex(eventID)
+	eventID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid event ID"})
 		return
@@ -498,16 +565,47 @@ func (ec *EventController) UnregisterFromEvent(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
+
+	// Fetch event
+	var event models.Event
+	var eventDate time.Time
+	var eventTime string
+	err = ec.db.QueryRowContext(ctx, "SELECT id, title, description, event_date, event_time, end_time, location, category, type, status, organizer, attendees, max_attendees, current_attendees, image_url, tags, is_featured, is_public, registration_deadline, created_by, created_at, updated_at FROM events WHERE id = ? AND is_active = true", eventID).Scan(
+		&event.ID, &event.Title, &event.Description, &eventDate, &eventTime, &event.EndTime,
+		&event.Location, &event.Category, &event.Type, &event.Status, &event.Organizer, &event.Attendees,
+		&event.MaxAttendees, &event.CurrentAttendees, &event.Image, &event.Tags, &event.IsFeatured,
+		&event.IsPublic, &event.RegistrationDeadline, &event.CreatedBy, &event.CreatedAt, &event.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Event not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch event", "error": err.Error()})
+		}
+		return
+	}
+	event.Date = eventDate
+	event.Time = eventTime
 
 	// Remove attendee
-	_, err = db.Collection("events").UpdateOne(ctx, bson.M{"_id": objectID}, bson.M{
-		"$pull": bson.M{"attendees": bson.M{"userId": userID}},
-		"$inc":  bson.M{"currentAttendees": -1},
-		"$set":  bson.M{"updatedAt": time.Now()},
-	})
+	found := false
+	var updatedAttendees models.EventAttendees
+	for _, attendee := range event.Attendees {
+		if attendee.UserID == userID.(int) {
+			found = true
+		} else {
+			updatedAttendees = append(updatedAttendees, attendee)
+		}
+	}
+
+	if !found {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Not registered for this event"})
+		return
+	}
+
+	_, err = ec.db.ExecContext(ctx, "UPDATE events SET attendees = ?, current_attendees = current_attendees - 1, updated_at = ? WHERE id = ?", updatedAttendees, time.Now(), eventID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to unregister from event"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to unregister from event", "error": err.Error()})
 		return
 	}
 
@@ -532,25 +630,27 @@ func (ec *EventController) GetMyEvents(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	// Build filter query
-	query := bson.M{
-		"$or": []bson.M{
-			{"createdBy": userID},
-			{"attendees.userId": userID},
-		},
-	}
+	// Build filter query: created by user OR user in attendees list
+	query := `
+		SELECT id, title, description, event_date, event_time, end_time, location, category, type, status, organizer, attendees, max_attendees, current_attendees, image_url, tags, is_featured, is_public, registration_deadline, created_by, created_at, updated_at
+		FROM events
+		WHERE is_active = true AND (created_by = ? OR JSON_CONTAINS(attendees, ?))
+	`
+	attendeeJSON := fmt.Sprintf(`{"userId":%d}`, userID.(int))
+	var args = []interface{}{userID.(int), attendeeJSON}
 
-	// Add additional filters
 	if filter.Category != "" {
-		query["category"] = filter.Category
+		query += " AND category = ?"
+		args = append(args, filter.Category)
 	}
 	if filter.Type != "" {
-		query["type"] = filter.Type
+		query += " AND type = ?"
+		args = append(args, filter.Type)
 	}
 	if filter.Status != "" {
-		query["status"] = filter.Status
+		query += " AND status = ?"
+		args = append(args, filter.Status)
 	}
 
 	// Set default values
@@ -561,17 +661,35 @@ func (ec *EventController) GetMyEvents(c *gin.Context) {
 		filter.Limit = 10
 	}
 
+	query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	args = append(args, filter.Limit, (filter.Page-1)*filter.Limit)
+
 	// Fetch events
-	cursor, err := db.Collection("events").Find(ctx, query)
+	rows, err := ec.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch events"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch events", "error": err.Error()})
 		return
 	}
+	defer rows.Close()
 
 	var events []models.Event
-	if err := cursor.All(ctx, &events); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to decode events"})
-		return
+	for rows.Next() {
+		var event models.Event
+		var eventDate time.Time
+		var eventTime string
+		err := rows.Scan(
+			&event.ID, &event.Title, &event.Description, &eventDate, &eventTime, &event.EndTime,
+			&event.Location, &event.Category, &event.Type, &event.Status, &event.Organizer, &event.Attendees,
+			&event.MaxAttendees, &event.CurrentAttendees, &event.Image, &event.Tags, &event.IsFeatured,
+			&event.IsPublic, &event.RegistrationDeadline, &event.CreatedBy, &event.CreatedAt, &event.UpdatedAt,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to scan event data", "error": err.Error()})
+			return
+		}
+		event.Date = eventDate
+		event.Time = eventTime
+		events = append(events, event)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -584,58 +702,52 @@ func (ec *EventController) GetMyEvents(c *gin.Context) {
 // GetEventStats handles fetching event statistics
 func (ec *EventController) GetEventStats(c *gin.Context) {
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
 	// Get total events
-	totalEvents, err := db.Collection("events").CountDocuments(ctx, bson.M{})
+	var totalEvents int
+	err := ec.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM events").Scan(&totalEvents)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to count events"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to count events", "error": err.Error()})
 		return
 	}
 
 	// Get upcoming events
-	upcomingEvents, err := db.Collection("events").CountDocuments(ctx, bson.M{"status": "upcoming"})
+	var upcomingEvents int
+	err = ec.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM events WHERE status = 'upcoming'").Scan(&upcomingEvents)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to count upcoming events"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to count upcoming events", "error": err.Error()})
 		return
 	}
 
 	// Get completed events
-	completedEvents, err := db.Collection("events").CountDocuments(ctx, bson.M{"status": "completed"})
+	var completedEvents int
+	err = ec.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM events WHERE status = 'completed'").Scan(&completedEvents)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to count completed events"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to count completed events", "error": err.Error()})
 		return
 	}
 
 	// Get events by category
-	pipeline := []bson.M{
-		{"$group": bson.M{"_id": "$category", "count": bson.M{"$sum": 1}}},
-	}
-	cursor, err := db.Collection("events").Aggregate(ctx, pipeline)
+	rows, err := ec.db.QueryContext(ctx, "SELECT category, COUNT(*) FROM events GROUP BY category")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to get events by category"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to get events by category", "error": err.Error()})
 		return
 	}
-
-	var categoryResults []bson.M
-	if err := cursor.All(ctx, &categoryResults); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to decode category results"})
-		return
-	}
+	defer rows.Close()
 
 	eventsByCategory := make(map[string]int)
-	for _, result := range categoryResults {
-		if category, ok := result["_id"].(string); ok {
-			if count, ok := result["count"].(int32); ok {
-				eventsByCategory[category] = int(count)
-			}
+	for rows.Next() {
+		var category string
+		var count int
+		if err := rows.Scan(&category, &count); err == nil {
+			eventsByCategory[category] = count
 		}
 	}
 
 	stats := models.EventStats{
-		TotalEvents:      int(totalEvents),
-		UpcomingEvents:   int(upcomingEvents),
-		CompletedEvents:  int(completedEvents),
+		TotalEvents:      totalEvents,
+		UpcomingEvents:   upcomingEvents,
+		CompletedEvents:  completedEvents,
 		EventsByCategory: eventsByCategory,
 	}
 
@@ -645,3 +757,4 @@ func (ec *EventController) GetEventStats(c *gin.Context) {
 		"data":    gin.H{"stats": stats},
 	})
 }
+

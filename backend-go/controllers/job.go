@@ -434,17 +434,16 @@ func (jc *JobController) GetMyJobs(c *gin.Context) {
 		return
 	}
 
-	// For now, return all jobs (in a real app, this would filter by posted_by user)
 	query := `
 		SELECT id, title, description, company, location, salary_range, 
 		       job_type, experience_required, skills_required, is_active, 
 		       created_at, updated_at
 		FROM jobs 
-		WHERE is_active = true
+		WHERE posted_by = ?
 		ORDER BY created_at DESC
 	`
 
-	rows, err := jc.db.Query(query)
+	rows, err := jc.db.Query(query, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,

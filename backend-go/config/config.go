@@ -50,7 +50,7 @@ func LoadConfig() *Config {
 	return &Config{
 		Environment: getEnv("NODE_ENV", "development"),
 		Port:        getEnv("PORT", "8082"),
-		MySQLURI:    getEnv("MYSQL_URI", "root:Shiva@56@tcp(localhost:3306)/mvsr_alumni?parseTime=true"),
+		MySQLURI:    getEnv("MYSQL_URI", "root:root@tcp(localhost:3306)/mvsr_alumni?parseTime=true"),
 		RedisURL:    getEnv("REDIS_URL", "redis://localhost:6379"),
 		JWTSecret:   getEnv("JWT_SECRET", "your-super-secret-jwt-key"),
 		FrontendURL: getEnv("FRONTEND_URL", "http://localhost:3000"),

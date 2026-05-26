@@ -1,13 +1,14 @@
 package controllers
 
 import (
+	"database/sql"
+	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
 
 	"mvsr-backend/config"
 	"mvsr-backend/middleware"
@@ -16,32 +17,84 @@ import (
 
 type UserController struct {
 	cfg *config.Config
+	db  *sql.DB
 }
 
 func NewUserController(cfg *config.Config) *UserController {
-	return &UserController{cfg: cfg}
+	return &UserController{
+		cfg: cfg,
+		db:  config.GetDatabase(),
+	}
+}
+
+const userSelectFields = `
+	id, first_name, last_name, email, password, roll_number, 
+	country_code, phone_number, address, college, department, 
+	passout_year, role, is_verified, is_active, profile_bio, 
+	profile_company, profile_role, profile_experience_years, profile_industry, 
+	profile_location, profile_website, profile_skills, profile_achievements, 
+	profile_interests, profile_image, social_linkedin, social_github, 
+	social_twitter, social_facebook, preferences_email_notifications, 
+	preferences_push_notifications, preferences_show_email, 
+	preferences_show_phone, preferences_show_profile, 
+	preferences_allow_messages, preferences_show_connections, 
+	preferences_theme, preferences_language, preferences_timezone, 
+	created_at, updated_at, last_login
+`
+
+func scanUser(s interface { Scan(dest ...interface{}) error }) (models.User, error) {
+	var user models.User
+	var profileSkills, profileAchievements, profileInterests models.JSONStringSlice
+	var lastLogin sql.NullTime
+
+	err := s.Scan(
+		&user.ID, &user.FirstName, &user.LastName, &user.Email, &user.Password, &user.RollNumber,
+		&user.CountryCode, &user.PhoneNumber, &user.Address, &user.College, &user.Department,
+		&user.PassoutYear, &user.Role, &user.IsVerified, &user.IsActive, &user.Profile.Bio,
+		&user.Profile.Company, &user.Profile.Role, &user.Profile.ExperienceYears, &user.Profile.Industry,
+		&user.Profile.Location, &user.Profile.Website, &profileSkills, &profileAchievements,
+		&profileInterests, &user.Profile.ProfileImage, &user.Social.LinkedIn, &user.Social.GitHub,
+		&user.Social.Twitter, &user.Social.Facebook, &user.Preferences.EmailNotifications,
+		&user.Preferences.PushNotifications, &user.Preferences.Privacy.ShowEmail,
+		&user.Preferences.Privacy.ShowPhone, &user.Preferences.Privacy.ShowProfile,
+		&user.Preferences.Privacy.AllowMessages, &user.Preferences.Privacy.ShowConnections,
+		&user.Preferences.Theme, &user.Preferences.Language, &user.Preferences.Timezone,
+		&user.CreatedAt, &user.UpdatedAt, &lastLogin,
+	)
+	if err != nil {
+		return user, err
+	}
+
+	user.Profile.Skills = profileSkills
+	user.Profile.Achievements = profileAchievements
+	user.Profile.Interests = profileInterests
+	if lastLogin.Valid {
+		user.LastLogin = &lastLogin.Time
+	}
+	return user, nil
 }
 
 // GetAllUsers handles fetching all users (admin only)
 func (uc *UserController) GetAllUsers(c *gin.Context) {
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	cursor, err := db.Collection("users").Find(ctx, bson.M{})
+	query := "SELECT " + userSelectFields + " FROM users"
+	rows, err := uc.db.QueryContext(ctx, query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch users"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch users", "error": err.Error()})
 		return
 	}
+	defer rows.Close()
 
 	var users []models.User
-	if err := cursor.All(ctx, &users); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to decode users"})
-		return
-	}
-
-	// Remove passwords from response
-	for i := range users {
-		users[i].Password = ""
+	for rows.Next() {
+		user, err := scanUser(rows)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to scan users", "error": err.Error()})
+			return
+		}
+		user.Password = ""
+		users = append(users, user)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -55,7 +108,6 @@ func (uc *UserController) GetAllUsers(c *gin.Context) {
 // GetUsersByRole handles fetching users by role
 func (uc *UserController) GetUsersByRole(c *gin.Context) {
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
 	role := c.Param("role")
 	if role == "" {
@@ -77,21 +129,23 @@ func (uc *UserController) GetUsersByRole(c *gin.Context) {
 		return
 	}
 
-	cursor, err := db.Collection("users").Find(ctx, bson.M{"role": role})
+	query := "SELECT " + userSelectFields + " FROM users WHERE role = ?"
+	rows, err := uc.db.QueryContext(ctx, query, role)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch users"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch users", "error": err.Error()})
 		return
 	}
+	defer rows.Close()
 
 	var users []models.User
-	if err := cursor.All(ctx, &users); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to decode users"})
-		return
-	}
-
-	// Remove passwords from response
-	for i := range users {
-		users[i].Password = ""
+	for rows.Next() {
+		user, err := scanUser(rows)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to scan users", "error": err.Error()})
+			return
+		}
+		user.Password = ""
+		users = append(users, user)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -105,23 +159,24 @@ func (uc *UserController) GetUsersByRole(c *gin.Context) {
 // GetAdmins handles fetching all admin users
 func (uc *UserController) GetAdmins(c *gin.Context) {
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	cursor, err := db.Collection("users").Find(ctx, bson.M{"role": "admin"})
+	query := "SELECT " + userSelectFields + " FROM users WHERE role = 'admin'"
+	rows, err := uc.db.QueryContext(ctx, query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch admins"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch admins", "error": err.Error()})
 		return
 	}
+	defer rows.Close()
 
 	var admins []models.User
-	if err := cursor.All(ctx, &admins); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to decode admins"})
-		return
-	}
-
-	// Remove passwords from response
-	for i := range admins {
-		admins[i].Password = ""
+	for rows.Next() {
+		user, err := scanUser(rows)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to scan admins", "error": err.Error()})
+			return
+		}
+		user.Password = ""
+		admins = append(admins, user)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -135,23 +190,24 @@ func (uc *UserController) GetAdmins(c *gin.Context) {
 // GetStudents handles fetching all student users
 func (uc *UserController) GetStudents(c *gin.Context) {
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	cursor, err := db.Collection("users").Find(ctx, bson.M{"role": "student"})
+	query := "SELECT " + userSelectFields + " FROM users WHERE role = 'student'"
+	rows, err := uc.db.QueryContext(ctx, query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch students"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch students", "error": err.Error()})
 		return
 	}
+	defer rows.Close()
 
 	var students []models.User
-	if err := cursor.All(ctx, &students); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to decode students"})
-		return
-	}
-
-	// Remove passwords from response
-	for i := range students {
-		students[i].Password = ""
+	for rows.Next() {
+		user, err := scanUser(rows)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to scan students", "error": err.Error()})
+			return
+		}
+		user.Password = ""
+		students = append(students, user)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -165,23 +221,24 @@ func (uc *UserController) GetStudents(c *gin.Context) {
 // GetAlumniUsers handles fetching all alumni users
 func (uc *UserController) GetAlumniUsers(c *gin.Context) {
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	cursor, err := db.Collection("users").Find(ctx, bson.M{"role": "alumni"})
+	query := "SELECT " + userSelectFields + " FROM users WHERE role = 'alumni'"
+	rows, err := uc.db.QueryContext(ctx, query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch alumni"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch alumni", "error": err.Error()})
 		return
 	}
+	defer rows.Close()
 
 	var alumni []models.User
-	if err := cursor.All(ctx, &alumni); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to decode alumni"})
-		return
-	}
-
-	// Remove passwords from response
-	for i := range alumni {
-		alumni[i].Password = ""
+	for rows.Next() {
+		user, err := scanUser(rows)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to scan alumni", "error": err.Error()})
+			return
+		}
+		user.Password = ""
+		alumni = append(alumni, user)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -195,22 +252,15 @@ func (uc *UserController) GetAlumniUsers(c *gin.Context) {
 // GetUsersStatistics handles fetching user statistics by role
 func (uc *UserController) GetUsersStatistics(c *gin.Context) {
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	// Get counts for each role
-	adminCount, _ := db.Collection("users").CountDocuments(ctx, bson.M{"role": "admin"})
-	alumniCount, _ := db.Collection("users").CountDocuments(ctx, bson.M{"role": "alumni"})
-	studentCount, _ := db.Collection("users").CountDocuments(ctx, bson.M{"role": "student"})
-	facultyCount, _ := db.Collection("users").CountDocuments(ctx, bson.M{"role": "faculty"})
-
-	// Get total users
-	totalCount, _ := db.Collection("users").CountDocuments(ctx, bson.M{})
-
-	// Get verified users count
-	verifiedCount, _ := db.Collection("users").CountDocuments(ctx, bson.M{"isVerified": true})
-
-	// Get active users count
-	activeCount, _ := db.Collection("users").CountDocuments(ctx, bson.M{"isActive": true})
+	var adminCount, alumniCount, studentCount, facultyCount, totalCount, verifiedCount, activeCount int
+	uc.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE role = 'admin'").Scan(&adminCount)
+	uc.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE role = 'alumni'").Scan(&alumniCount)
+	uc.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE role = 'student'").Scan(&studentCount)
+	uc.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE role = 'faculty'").Scan(&facultyCount)
+	uc.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users").Scan(&totalCount)
+	uc.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE is_verified = true").Scan(&verifiedCount)
+	uc.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE is_active = true").Scan(&activeCount)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -232,34 +282,24 @@ func (uc *UserController) GetUsersStatistics(c *gin.Context) {
 // GetPendingRegistrations handles fetching pending registrations for admin approval
 func (uc *UserController) GetPendingRegistrations(c *gin.Context) {
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	// Fetch unverified users
-	cursor, err := db.Collection("users").Find(ctx, bson.M{
-		"isVerified": false,
-		"isActive":   true,
-	})
+	query := "SELECT " + userSelectFields + " FROM users WHERE is_verified = false AND is_active = true"
+	rows, err := uc.db.QueryContext(ctx, query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to fetch pending registrations",
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch pending registrations", "error": err.Error()})
 		return
 	}
-	defer cursor.Close(ctx)
+	defer rows.Close()
 
 	var users []models.User
-	if err = cursor.All(ctx, &users); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to decode users",
-		})
-		return
-	}
-
-	// Remove passwords from response
-	for i := range users {
-		users[i].Password = ""
+	for rows.Next() {
+		user, err := scanUser(rows)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to scan users", "error": err.Error()})
+			return
+		}
+		user.Password = ""
+		users = append(users, user)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -273,41 +313,22 @@ func (uc *UserController) GetPendingRegistrations(c *gin.Context) {
 // ApproveRegistration handles approving a user registration
 func (uc *UserController) ApproveRegistration(c *gin.Context) {
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	// Get user ID from URL parameter
-	userID := c.Param("id")
-	objectID, err := primitive.ObjectIDFromHex(userID)
+	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid user ID",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID"})
 		return
 	}
 
-	// Update user to verified status
-	update := bson.M{
-		"$set": bson.M{
-			"isVerified": true,
-			"updatedAt":  time.Now(),
-		},
-	}
-
-	result, err := db.Collection("users").UpdateOne(ctx, bson.M{"_id": objectID}, update)
+	res, err := uc.db.ExecContext(ctx, "UPDATE users SET is_verified = true, updated_at = ? WHERE id = ?", time.Now(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to approve registration",
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to approve registration", "error": err.Error()})
 		return
 	}
 
-	if result.MatchedCount == 0 {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "User not found",
-		})
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "User not found"})
 		return
 	}
 
@@ -320,34 +341,22 @@ func (uc *UserController) ApproveRegistration(c *gin.Context) {
 // RejectRegistration handles rejecting a user registration
 func (uc *UserController) RejectRegistration(c *gin.Context) {
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	// Get user ID from URL parameter
-	userID := c.Param("id")
-	objectID, err := primitive.ObjectIDFromHex(userID)
+	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid user ID",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID"})
 		return
 	}
 
-	// Delete user from database
-	result, err := db.Collection("users").DeleteOne(ctx, bson.M{"_id": objectID})
+	res, err := uc.db.ExecContext(ctx, "DELETE FROM users WHERE id = ?", userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to reject registration",
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to reject registration", "error": err.Error()})
 		return
 	}
 
-	if result.DeletedCount == 0 {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "User not found",
-		})
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "User not found"})
 		return
 	}
 
@@ -359,33 +368,26 @@ func (uc *UserController) RejectRegistration(c *gin.Context) {
 
 // GetUser handles fetching a single user
 func (uc *UserController) GetUser(c *gin.Context) {
-	userID := c.Param("id")
-	if userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "User ID is required"})
-		return
-	}
-
-	objectID, err := primitive.ObjectIDFromHex(userID)
+	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID"})
 		return
 	}
 
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	var user models.User
-	err = db.Collection("users").FindOne(ctx, bson.M{"_id": objectID}).Decode(&user)
+	query := "SELECT " + userSelectFields + " FROM users WHERE id = ?"
+	row := uc.db.QueryRowContext(ctx, query, userID)
+	user, err := scanUser(row)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
+		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "User not found"})
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch user"})
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch user", "error": err.Error()})
 		}
 		return
 	}
 
-	// Remove password from response
 	user.Password = ""
 
 	c.JSON(http.StatusOK, gin.H{
@@ -397,13 +399,7 @@ func (uc *UserController) GetUser(c *gin.Context) {
 
 // UpdateUser handles updating a user (admin only)
 func (uc *UserController) UpdateUser(c *gin.Context) {
-	userID := c.Param("id")
-	if userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "User ID is required"})
-		return
-	}
-
-	objectID, err := primitive.ObjectIDFromHex(userID)
+	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID"})
 		return
@@ -422,45 +418,57 @@ func (uc *UserController) UpdateUser(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	// Build update document
-	update := bson.M{"updatedAt": time.Now()}
+	var updates []string
+	var args []interface{}
+
 	if req.FirstName != nil {
-		update["firstName"] = *req.FirstName
+		updates = append(updates, "first_name = ?")
+		args = append(args, *req.FirstName)
 	}
 	if req.LastName != nil {
-		update["lastName"] = *req.LastName
+		updates = append(updates, "last_name = ?")
+		args = append(args, *req.LastName)
 	}
 	if req.Phone != nil {
-		update["phone"] = *req.Phone
+		updates = append(updates, "phone_number = ?")
+		args = append(args, *req.Phone)
 	}
 	if req.Profile != nil {
-		update["profile"] = *req.Profile
+		updates = append(updates, "profile_bio = ?, profile_company = ?, profile_role = ?, profile_experience_years = ?, profile_industry = ?, profile_location = ?, profile_website = ?, profile_skills = ?, profile_achievements = ?, profile_interests = ?, profile_image = ?")
+		args = append(args, req.Profile.Bio, req.Profile.Company, req.Profile.Role, req.Profile.ExperienceYears, req.Profile.Industry, req.Profile.Location, req.Profile.Website, req.Profile.Skills, req.Profile.Achievements, req.Profile.Interests, req.Profile.ProfileImage)
 	}
 	if req.Social != nil {
-		update["social"] = *req.Social
+		updates = append(updates, "social_linkedin = ?, social_github = ?, social_twitter = ?, social_facebook = ?")
+		args = append(args, req.Social.LinkedIn, req.Social.GitHub, req.Social.Twitter, req.Social.Facebook)
 	}
 	if req.Preferences != nil {
-		update["preferences"] = *req.Preferences
+		updates = append(updates, "preferences_email_notifications = ?, preferences_push_notifications = ?, preferences_show_email = ?, preferences_show_phone = ?, preferences_show_profile = ?, preferences_allow_messages = ?, preferences_show_connections = ?, preferences_theme = ?, preferences_language = ?, preferences_timezone = ?")
+		args = append(args, req.Preferences.EmailNotifications, req.Preferences.PushNotifications, req.Preferences.Privacy.ShowEmail, req.Preferences.Privacy.ShowPhone, req.Preferences.Privacy.ShowProfile, req.Preferences.Privacy.AllowMessages, req.Preferences.Privacy.ShowConnections, req.Preferences.Theme, req.Preferences.Language, req.Preferences.Timezone)
 	}
 
-	// Update user
-	_, err = db.Collection("users").UpdateOne(ctx, bson.M{"_id": objectID}, bson.M{"$set": update})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update user"})
-		return
+	if len(updates) > 0 {
+		updates = append(updates, "updated_at = ?")
+		args = append(args, time.Now())
+		args = append(args, userID)
+
+		query := fmt.Sprintf("UPDATE users SET %s WHERE id = ?", strings.Join(updates, ", "))
+		_, err = uc.db.ExecContext(ctx, query, args...)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update user", "error": err.Error()})
+			return
+		}
 	}
 
 	// Fetch updated user
-	var user models.User
-	err = db.Collection("users").FindOne(ctx, bson.M{"_id": objectID}).Decode(&user)
+	query := "SELECT " + userSelectFields + " FROM users WHERE id = ?"
+	row := uc.db.QueryRowContext(ctx, query, userID)
+	user, err := scanUser(row)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch updated user"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch updated user", "error": err.Error()})
 		return
 	}
 
-	// Remove password from response
 	user.Password = ""
 
 	c.JSON(http.StatusOK, gin.H{
@@ -472,25 +480,17 @@ func (uc *UserController) UpdateUser(c *gin.Context) {
 
 // DeleteUser handles deleting a user (admin only)
 func (uc *UserController) DeleteUser(c *gin.Context) {
-	userID := c.Param("id")
-	if userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "User ID is required"})
-		return
-	}
-
-	objectID, err := primitive.ObjectIDFromHex(userID)
+	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID"})
 		return
 	}
 
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	// Delete user
-	_, err = db.Collection("users").DeleteOne(ctx, bson.M{"_id": objectID})
+	_, err = uc.db.ExecContext(ctx, "DELETE FROM users WHERE id = ?", userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to delete user"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to delete user", "error": err.Error()})
 		return
 	}
 
@@ -502,30 +502,17 @@ func (uc *UserController) DeleteUser(c *gin.Context) {
 
 // VerifyUser handles verifying a user (admin only)
 func (uc *UserController) VerifyUser(c *gin.Context) {
-	userID := c.Param("id")
-	if userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "User ID is required"})
-		return
-	}
-
-	objectID, err := primitive.ObjectIDFromHex(userID)
+	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID"})
 		return
 	}
 
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	// Update user verification status
-	_, err = db.Collection("users").UpdateOne(ctx, bson.M{"_id": objectID}, bson.M{
-		"$set": bson.M{
-			"isVerified": true,
-			"updatedAt":  time.Now(),
-		},
-	})
+	_, err = uc.db.ExecContext(ctx, "UPDATE users SET is_verified = true, updated_at = ? WHERE id = ?", time.Now(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to verify user"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to verify user", "error": err.Error()})
 		return
 	}
 
@@ -537,30 +524,17 @@ func (uc *UserController) VerifyUser(c *gin.Context) {
 
 // DeactivateUser handles deactivating a user (admin only)
 func (uc *UserController) DeactivateUser(c *gin.Context) {
-	userID := c.Param("id")
-	if userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "User ID is required"})
-		return
-	}
-
-	objectID, err := primitive.ObjectIDFromHex(userID)
+	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID"})
 		return
 	}
 
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	// Deactivate user
-	_, err = db.Collection("users").UpdateOne(ctx, bson.M{"_id": objectID}, bson.M{
-		"$set": bson.M{
-			"isActive":  false,
-			"updatedAt": time.Now(),
-		},
-	})
+	_, err = uc.db.ExecContext(ctx, "UPDATE users SET is_active = false, updated_at = ? WHERE id = ?", time.Now(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to deactivate user"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to deactivate user", "error": err.Error()})
 		return
 	}
 
@@ -572,30 +546,17 @@ func (uc *UserController) DeactivateUser(c *gin.Context) {
 
 // ActivateUser handles activating a user (admin only)
 func (uc *UserController) ActivateUser(c *gin.Context) {
-	userID := c.Param("id")
-	if userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "User ID is required"})
-		return
-	}
-
-	objectID, err := primitive.ObjectIDFromHex(userID)
+	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID"})
 		return
 	}
 
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	// Activate user
-	_, err = db.Collection("users").UpdateOne(ctx, bson.M{"_id": objectID}, bson.M{
-		"$set": bson.M{
-			"isActive":  true,
-			"updatedAt": time.Now(),
-		},
-	})
+	_, err = uc.db.ExecContext(ctx, "UPDATE users SET is_active = true, updated_at = ? WHERE id = ?", time.Now(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to activate user"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to activate user", "error": err.Error()})
 		return
 	}
 
@@ -608,51 +569,25 @@ func (uc *UserController) ActivateUser(c *gin.Context) {
 // GetSystemStats handles fetching system statistics (admin only)
 func (uc *UserController) GetSystemStats(c *gin.Context) {
 	ctx := c.Request.Context()
-	db := config.GetDatabase()
 
-	// Get total users
-	totalUsers, err := db.Collection("users").CountDocuments(ctx, bson.M{})
+	var totalUsers, activeUsers, verifiedUsers int
+	uc.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users").Scan(&totalUsers)
+	uc.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE is_active = true").Scan(&activeUsers)
+	uc.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE is_verified = true").Scan(&verifiedUsers)
+
+	rows, err := uc.db.QueryContext(ctx, "SELECT role, COUNT(*) FROM users GROUP BY role")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to count users"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to get users by role", "error": err.Error()})
 		return
 	}
-
-	// Get active users
-	activeUsers, err := db.Collection("users").CountDocuments(ctx, bson.M{"isActive": true})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to count active users"})
-		return
-	}
-
-	// Get verified users
-	verifiedUsers, err := db.Collection("users").CountDocuments(ctx, bson.M{"isVerified": true})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to count verified users"})
-		return
-	}
-
-	// Get users by role
-	pipeline := []bson.M{
-		{"$group": bson.M{"_id": "$role", "count": bson.M{"$sum": 1}}},
-	}
-	cursor, err := db.Collection("users").Aggregate(ctx, pipeline)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to get users by role"})
-		return
-	}
-
-	var roleResults []bson.M
-	if err := cursor.All(ctx, &roleResults); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to decode role results"})
-		return
-	}
+	defer rows.Close()
 
 	usersByRole := make(map[string]int)
-	for _, result := range roleResults {
-		if role, ok := result["_id"].(string); ok {
-			if count, ok := result["count"].(int32); ok {
-				usersByRole[role] = int(count)
-			}
+	for rows.Next() {
+		var role string
+		var count int
+		if err := rows.Scan(&role, &count); err == nil {
+			usersByRole[role] = count
 		}
 	}
 
@@ -672,8 +607,6 @@ func (uc *UserController) GetSystemStats(c *gin.Context) {
 
 // GetSystemLogs handles fetching system logs (admin only)
 func (uc *UserController) GetSystemLogs(c *gin.Context) {
-	// This is a placeholder for system logs implementation
-	// In a real implementation, you would fetch logs from a logging system
 	c.JSON(http.StatusNotImplemented, gin.H{
 		"success": false,
 		"message": "System logs not implemented yet",
@@ -682,8 +615,6 @@ func (uc *UserController) GetSystemLogs(c *gin.Context) {
 
 // CreateBackup handles creating a system backup (admin only)
 func (uc *UserController) CreateBackup(c *gin.Context) {
-	// This is a placeholder for backup implementation
-	// In a real implementation, you would create a database backup
 	c.JSON(http.StatusNotImplemented, gin.H{
 		"success": false,
 		"message": "Backup creation not implemented yet",
@@ -692,10 +623,9 @@ func (uc *UserController) CreateBackup(c *gin.Context) {
 
 // RestoreBackup handles restoring a system backup (admin only)
 func (uc *UserController) RestoreBackup(c *gin.Context) {
-	// This is a placeholder for backup restoration implementation
-	// In a real implementation, you would restore from a backup
 	c.JSON(http.StatusNotImplemented, gin.H{
 		"success": false,
 		"message": "Backup restoration not implemented yet",
 	})
 }
+

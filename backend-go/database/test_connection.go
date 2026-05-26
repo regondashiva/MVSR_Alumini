@@ -10,7 +10,7 @@ import (
 
 func main() {
 	// Test database connection with password Shiva@56
-	dsn := "root:Shiva@56@tcp(localhost:3306)/mvsr_alumni?parseTime=true"
+	dsn := "root:root@tcp(localhost:3306)/mvsr_alumni?parseTime=true"
 	
 	fmt.Println("🔍 Testing MySQL Connection...")
 	fmt.Printf("📡 Connection String: %s\n", dsn)

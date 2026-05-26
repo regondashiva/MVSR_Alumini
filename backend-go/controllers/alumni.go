@@ -2,12 +2,12 @@ package controllers
 
 import (
 	"net/http"
+	"strings"
 
 	"mvsr-backend/config"
 	"mvsr-backend/models"
 
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 type AlumniController struct {
@@ -22,33 +22,49 @@ func (ac *AlumniController) GetApprovedAlumni(c *gin.Context) {
 	ctx := c.Request.Context()
 	db := config.GetDatabase()
 
-	cursor, err := db.Collection("users").Find(ctx, bson.M{
-		"isVerified": true,
-		"isActive":   true,
-		"role":       bson.M{"$in": []string{"alumni", "student", "faculty"}},
-	})
+	query := `
+		SELECT id, first_name, last_name, email, roll_number, country_code, 
+		       phone_number, address, college, department, passout_year, role, 
+		       is_verified, is_active, profile_company, profile_role, 
+		       profile_experience_years, profile_industry, profile_skills, 
+		       created_at, updated_at
+		FROM users
+		WHERE is_verified = true AND is_active = true AND role IN ('alumni', 'student', 'faculty')
+	`
+
+	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": "Failed to fetch alumni",
+			"error":   err.Error(),
 		})
 		return
 	}
-	defer cursor.Close(ctx)
-
-	var alumni []models.User
-	if err = cursor.All(ctx, &alumni); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to decode alumni data",
-		})
-		return
-	}
+	defer rows.Close()
 
 	var alumniData []map[string]interface{}
-	for _, user := range alumni {
+	for rows.Next() {
+		var user models.User
+		var profileSkills models.JSONStringSlice
+		err := rows.Scan(
+			&user.ID, &user.FirstName, &user.LastName, &user.Email, &user.RollNumber, &user.CountryCode,
+			&user.PhoneNumber, &user.Address, &user.College, &user.Department, &user.PassoutYear, &user.Role,
+			&user.IsVerified, &user.IsActive, &user.Profile.Company, &user.Profile.Role,
+			&user.Profile.ExperienceYears, &user.Profile.Industry, &profileSkills,
+			&user.CreatedAt, &user.UpdatedAt,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "Failed to scan alumni data",
+				"error":   err.Error(),
+			})
+			return
+		}
+
 		alumniData = append(alumniData, map[string]interface{}{
-			"id":              user.ID.Hex(),
+			"id":              user.ID,
 			"name":            user.FirstName + " " + user.LastName,
 			"firstName":       user.FirstName,
 			"lastName":        user.LastName,
@@ -65,7 +81,7 @@ func (ac *AlumniController) GetApprovedAlumni(c *gin.Context) {
 			"roleDescription": user.Profile.Role,
 			"experienceYears": user.Profile.ExperienceYears,
 			"industry":        user.Profile.Industry,
-			"skills":          user.Profile.ProcessSkills,
+			"skills":          strings.Join(profileSkills, ", "),
 			"verified":        user.IsVerified,
 			"active":          user.IsActive,
 			"createdAt":       user.CreatedAt,
@@ -93,63 +109,83 @@ func (ac *AlumniController) SearchAlumni(c *gin.Context) {
 	college := c.Query("college")
 	industry := c.Query("industry")
 
-	filter := bson.M{
-		"isVerified": true,
-		"isActive":   true,
-		"role":       bson.M{"$in": []string{"alumni", "student", "faculty"}},
-	}
+	query := `
+		SELECT id, first_name, last_name, email, roll_number, country_code, 
+		       phone_number, address, college, department, passout_year, role, 
+		       is_verified, is_active, profile_company, profile_role, 
+		       profile_experience_years, profile_industry, profile_skills, 
+		       created_at, updated_at
+		FROM users
+		WHERE is_verified = true AND is_active = true AND role IN ('alumni', 'student', 'faculty')
+	`
+	var args []interface{}
 
 	if name != "" {
-		filter["$or"] = []bson.M{
-			{"firstName": bson.M{"$regex": name, "$options": "i"}},
-			{"lastName": bson.M{"$regex": name, "$options": "i"}},
-		}
+		query += " AND (first_name LIKE ? OR last_name LIKE ?)"
+		args = append(args, "%"+name+"%", "%"+name+"%")
 	}
 	if company != "" {
-		filter["profile.company"] = bson.M{"$regex": company, "$options": "i"}
+		query += " AND profile_company LIKE ?"
+		args = append(args, "%"+company+"%")
 	}
 	if city != "" {
-		filter["address"] = bson.M{"$regex": city, "$options": "i"}
+		query += " AND address LIKE ?"
+		args = append(args, "%"+city+"%")
 	}
 	if state != "" {
-		filter["address"] = bson.M{"$regex": state, "$options": "i"}
+		query += " AND address LIKE ?"
+		args = append(args, "%"+state+"%")
 	}
 	if country != "" {
-		filter["address"] = bson.M{"$regex": country, "$options": "i"}
+		query += " AND address LIKE ?"
+		args = append(args, "%"+country+"%")
 	}
 	if department != "" {
-		filter["department"] = bson.M{"$regex": department, "$options": "i"}
+		query += " AND department LIKE ?"
+		args = append(args, "%"+department+"%")
 	}
 	if college != "" {
-		filter["college"] = bson.M{"$regex": college, "$options": "i"}
+		query += " AND college LIKE ?"
+		args = append(args, "%"+college+"%")
 	}
 	if industry != "" {
-		filter["profile.industry"] = bson.M{"$regex": industry, "$options": "i"}
+		query += " AND profile_industry LIKE ?"
+		args = append(args, "%"+industry+"%")
 	}
 
-	cursor, err := db.Collection("users").Find(ctx, filter)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": "Failed to search alumni",
+			"error":   err.Error(),
 		})
 		return
 	}
-	defer cursor.Close(ctx)
-
-	var alumni []models.User
-	if err = cursor.All(ctx, &alumni); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to decode alumni data",
-		})
-		return
-	}
+	defer rows.Close()
 
 	var alumniData []map[string]interface{}
-	for _, user := range alumni {
+	for rows.Next() {
+		var user models.User
+		var profileSkills models.JSONStringSlice
+		err := rows.Scan(
+			&user.ID, &user.FirstName, &user.LastName, &user.Email, &user.RollNumber, &user.CountryCode,
+			&user.PhoneNumber, &user.Address, &user.College, &user.Department, &user.PassoutYear, &user.Role,
+			&user.IsVerified, &user.IsActive, &user.Profile.Company, &user.Profile.Role,
+			&user.Profile.ExperienceYears, &user.Profile.Industry, &profileSkills,
+			&user.CreatedAt, &user.UpdatedAt,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "Failed to scan alumni data",
+				"error":   err.Error(),
+			})
+			return
+		}
+
 		alumniData = append(alumniData, map[string]interface{}{
-			"id":              user.ID.Hex(),
+			"id":              user.ID,
 			"name":            user.FirstName + " " + user.LastName,
 			"firstName":       user.FirstName,
 			"lastName":        user.LastName,
@@ -166,7 +202,7 @@ func (ac *AlumniController) SearchAlumni(c *gin.Context) {
 			"roleDescription": user.Profile.Role,
 			"experienceYears": user.Profile.ExperienceYears,
 			"industry":        user.Profile.Industry,
-			"skills":          user.Profile.ProcessSkills,
+			"skills":          strings.Join(profileSkills, ", "),
 			"verified":        user.IsVerified,
 			"active":          user.IsActive,
 			"createdAt":       user.CreatedAt,
@@ -222,3 +258,4 @@ func (ac *AlumniController) GetAlumniStats(c *gin.Context) {
 		"message": "Alumni statistics not implemented yet",
 	})
 }
+

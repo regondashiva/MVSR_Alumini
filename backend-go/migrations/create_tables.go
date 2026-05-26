@@ -10,7 +10,7 @@ import (
 
 func main() {
 	// Connect to MySQL without database name
-	db, err := sql.Open("mysql", "root:Shiva@56@tcp(localhost:3306)/")
+	db, err := sql.Open("mysql", "root:root@tcp(localhost:3306)/")
 	if err != nil {
 		log.Fatal("Failed to connect to MySQL:", err)
 	}
@@ -89,10 +89,21 @@ func main() {
 		description TEXT,
 		event_date DATE NOT NULL,
 		event_time TIME,
+		end_time VARCHAR(50),
 		location VARCHAR(255),
-		organizer VARCHAR(255),
 		category VARCHAR(100),
+		type VARCHAR(50) DEFAULT 'offline',
+		status VARCHAR(50) DEFAULT 'upcoming',
+		organizer JSON,
+		attendees JSON,
+		max_attendees INT DEFAULT 100,
+		current_attendees INT DEFAULT 0,
 		image_url VARCHAR(500),
+		tags JSON,
+		is_featured BOOLEAN DEFAULT FALSE,
+		is_public BOOLEAN DEFAULT TRUE,
+		registration_deadline TIMESTAMP NULL,
+		created_by INT,
 		is_active BOOLEAN DEFAULT TRUE,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP

@@ -2,12 +2,12 @@ package middleware
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"mvsr-backend/config"
 )
@@ -63,16 +63,20 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		// Extract user ID from claims
-		userIDStr, ok := claims["userID"].(string)
-		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Invalid user ID in token"})
-			c.Abort()
-			return
-		}
-
-		userID, err := primitive.ObjectIDFromHex(userIDStr)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Invalid user ID format"})
+		var userID int
+		switch val := claims["userID"].(type) {
+		case float64:
+			userID = int(val)
+		case string:
+			var err error
+			userID, err = strconv.Atoi(val)
+			if err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Invalid user ID format"})
+				c.Abort()
+				return
+			}
+		default:
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Invalid user ID type in token"})
 			c.Abort()
 			return
 		}
@@ -161,14 +165,18 @@ func OptionalAuth(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		// Extract user ID from claims
-		userIDStr, ok := claims["userID"].(string)
-		if !ok {
-			c.Next()
-			return
-		}
-
-		userID, err := primitive.ObjectIDFromHex(userIDStr)
-		if err != nil {
+		var userID int
+		switch val := claims["userID"].(type) {
+		case float64:
+			userID = int(val)
+		case string:
+			var err error
+			userID, err = strconv.Atoi(val)
+			if err != nil {
+				c.Next()
+				return
+			}
+		default:
 			c.Next()
 			return
 		}
