@@ -256,7 +256,7 @@ const AlumniDirectoryEnhanced = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pt-20">
+    <div className="min-h-screen bg-gray-50 pt-20 pb-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-8 mt-8">
@@ -506,87 +506,66 @@ const AlumniDirectoryEnhanced = () => {
               <div
                 key={alum.id}
                 onClick={() => handleAlumniClick(alum)}
-                className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden group"
+                className="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer overflow-hidden group"
               >
-                {/* Header with gradient background */}
-                <div className="h-24 bg-gradient-to-r from-mvsr-600 to-mvsr-800 relative">
-                  <div className="absolute -bottom-10 left-6">
-                    <img
-                      src={alum.image || '/api/placeholder/80/80'}
-                      alt={alum.name}
-                      className="h-20 w-20 rounded-full border-4 border-white shadow-lg object-cover"
-                    />
-                  </div>
-                  {alum.verified && (
-                    <div className="absolute top-3 right-3">
-                      <div className="bg-green-500 text-white text-xs px-2 py-1 rounded-full flex items-center">
-                        <UserCircleIcon className="h-3 w-3 mr-1" />
-                        Verified
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Content */}
-                <div className="p-6 pt-12">
-                  <div className="mb-4">
-                    <h3 className="text-xl font-bold text-gray-900 mb-1 group-hover:text-mvsr-600 transition-colors">
-                      {alum.name}
-                    </h3>
-                    <p className="text-sm text-gray-600 font-medium">
-                      {alum.currentPosition}
-                    </p>
-                    <p className="text-sm text-mvsr-600 font-semibold">
-                      {alum.company}
-                    </p>
-                  </div>
-
-                  {/* Info Grid */}
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    <div className="flex items-center text-sm text-gray-600 bg-gray-50 rounded-lg p-2">
-                      <LocationMarkerIcon className="h-4 w-4 mr-2 text-mvsr-600" />
-                      <span className="truncate">{alum.city}</span>
-                    </div>
-                    <div className="flex items-center text-sm text-gray-600 bg-gray-50 rounded-lg p-2">
-                      <AcademicCapIcon className="h-4 w-4 mr-2 text-mvsr-600" />
-                      <span className="truncate">{alum.batch}</span>
-                    </div>
-                  </div>
-
-                  {/* Skills */}
-                  {(() => {
-                    try {
-                      if (alum.skills && Array.isArray(alum.skills) && alum.skills.length > 0) {
-                        return (
-                          <div className="mb-4">
-                            <div className="flex flex-wrap gap-1">
-                              {alum.skills.slice(0, 3).map((skill, index) => (
-                                <span key={index} className="px-2 py-1 bg-mvsr-100 text-mvsr-800 text-xs rounded-full">
-                                  {skill}
-                                </span>
-                              ))}
-                              {alum.skills.length > 3 && (
-                                <span className="px-2 py-1 bg-gray-200 text-gray-600 text-xs rounded-full">
-                                  +{alum.skills.length - 3}
-                                </span>
-                              )}
+                <div className="p-4 md:p-6">
+                  <div className="flex items-start md:items-center">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-1 truncate group-hover:text-mvsr-600 transition-colors">
+                            {alum.name}
+                          </h3>
+                          <p className="text-sm text-gray-600 truncate">
+                            {alum.currentPosition}
+                          </p>
+                          <p className="text-sm text-mvsr-600 font-semibold truncate">
+                            {alum.company}
+                          </p>
+                        </div>
+                        {alum.verified && (
+                          <div className="ml-4 flex-shrink-0">
+                            <div className="bg-green-50 text-green-700 text-xs px-2 py-1 rounded-full flex items-center">
+                              <UserCircleIcon className="h-4 w-4 mr-1" />
+                              Verified
                             </div>
                           </div>
-                        );
-                      }
-                      return null;
-                    } catch (error) {
-                      console.warn('Error rendering skills for alumni:', alum.id, error);
-                      return null;
-                    }
-                  })()}
+                        )}
+                      </div>
 
-                  {/* Footer */}
-                  <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <div className="flex items-center text-sm text-gray-600 bg-gray-50 rounded-lg p-2">
+                          <LocationMarkerIcon className="h-4 w-4 mr-2 text-mvsr-600" />
+                          <span className="truncate">{alum.city || '—'}</span>
+                        </div>
+                        <div className="flex items-center text-sm text-gray-600 bg-gray-50 rounded-lg p-2">
+                          <AcademicCapIcon className="h-4 w-4 mr-2 text-mvsr-600" />
+                          <span className="truncate">{alum.batch || '—'}</span>
+                        </div>
+                      </div>
+
+                      {alum.skills && Array.isArray(alum.skills) && alum.skills.length > 0 && (
+                        <div className="mt-3">
+                          <div className="flex flex-wrap gap-2">
+                            {alum.skills.slice(0, 4).map((skill, idx) => (
+                              <span key={idx} className="px-2 py-1 bg-mvsr-100 text-mvsr-800 text-xs rounded-full">
+                                {skill}
+                              </span>
+                            ))}
+                            {alum.skills.length > 4 && (
+                              <span className="px-2 py-1 bg-gray-200 text-gray-600 text-xs rounded-full">
+                                +{alum.skills.length - 4}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
                     <span className={`text-xs px-2 py-1 rounded-full ${
-                      alum.verified 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-yellow-100 text-yellow-800'
+                      alum.verified ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
                     }`}>
                       {alum.verified ? 'Verified Alumni' : 'Pending Verification'}
                     </span>

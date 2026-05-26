@@ -20,7 +20,7 @@ const LoginSimple = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          rollNumber: data.rollNumber,
+          email: data.email,
           password: data.password
         }),
       });
@@ -42,7 +42,7 @@ const LoginSimple = () => {
           navigate('/dashboard');
         }
       } else {
-        toast.error(result.message || 'Invalid roll number or password');
+        toast.error(result.message || 'Invalid email or password');
       }
     } catch (error) {
       toast.error('Login failed. Please try again.');
@@ -64,34 +64,34 @@ const LoginSimple = () => {
             Sign in to your account
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Use your roll number and password to access your account
+            Use your email and password to access your account
           </p>
         </div>
         
         <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
           <div>
-            <label htmlFor="rollNumber" className="block text-sm font-medium text-gray-700">
-              Roll Number *
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              Email Address *
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <IdentificationIcon className="h-5 w-5 text-gray-400" />
               </div>
               <input
-                {...register('rollNumber', { 
-                  required: 'Roll number is required',
+                {...register('email', {
+                  required: 'Email is required',
                   pattern: {
-                    value: /^[A-Za-z0-9]+$/,
-                    message: 'Invalid roll number format'
+                    value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                    message: 'Invalid email address'
                   }
                 })}
-                type="text"
+                type="email"
                 className="mt-1 appearance-none relative block w-full px-3 py-2 pl-10 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
-                placeholder="Enter your roll number"
+                placeholder="Enter your email"
               />
             </div>
-            {errors.rollNumber && (
-              <p className="mt-1 text-sm text-red-600">{errors.rollNumber.message}</p>
+            {errors.email && (
+              <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
             )}
           </div>
 
