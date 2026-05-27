@@ -200,6 +200,9 @@ docker run -p 8080:8080 --env-file .env mvsr-backend
 | `REDIS_URL` | Redis connection string | `redis://localhost:6379` |
 | `JWT_SECRET` | JWT secret key | - |
 | `FRONTEND_URL` | Frontend URL | `http://localhost:3000` |
+| `MYSQL_URI` | MySQL connection string | `root:root@tcp(localhost:3306)/mvsr_alumni?parseTime=true` |
+| `SKIP_DB` | Skip DB/Redis connections for local frontend dev | `false` |
+
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID | - |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | - |
 | `LINKEDIN_CLIENT_ID` | LinkedIn OAuth client ID | - |

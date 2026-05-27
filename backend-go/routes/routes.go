@@ -19,6 +19,8 @@ func SetupRoutes(
 	jobController *controllers.JobController,
 	newsController *controllers.NewsController,
 	galleryController *controllers.GalleryController,
+	facultyController *controllers.FacultyController,
+	helpdeskController *controllers.HelpdeskController,
 ) {
 	// Health check
 	router.GET("/api/health", func(c *gin.Context) {
@@ -61,6 +63,7 @@ func SetupRoutes(
 			public.GET("/gallery", galleryController.GetGallery)
 			public.GET("/gallery/:id", galleryController.GetGalleryItem)
 			public.GET("/users/statistics", userController.GetUsersStatistics)
+			public.POST("/helpdesk/submit", helpdeskController.SubmitTicket)
 		}
 
 		// ── Protected routes (require valid access token) ──────
@@ -134,6 +137,13 @@ func SetupRoutes(
 				alumni.GET("/connections", alumniController.GetConnections)
 				alumni.GET("/stats", alumniController.GetAlumniStats)
 			}
+
+			// Faculty
+			faculty := protected.Group("/faculty")
+			{
+				faculty.GET("/pending-users", facultyController.GetPendingUsers)
+				faculty.POST("/verify-user/:id", facultyController.VerifyUser)
+			}
 		}
 
 		// ── Admin routes ───────────────────────────────────────
@@ -155,10 +165,24 @@ func SetupRoutes(
 			admin.GET("/pending-registrations", userController.GetPendingRegistrations)
 			admin.POST("/approve-registration/:id", userController.ApproveRegistration)
 			admin.POST("/reject-registration/:id", userController.RejectRegistration)
+			// New approval endpoints (frontend expected names)
+			admin.GET("/pending-approvals", userController.GetPendingRegistrations)
+			admin.POST("/approve-user/:id", userController.ApproveRegistration)
+			admin.POST("/reject-user/:id", userController.RejectRegistration)
 			admin.GET("/stats", userController.GetSystemStats)
 			admin.GET("/logs", userController.GetSystemLogs)
 			admin.POST("/backup", userController.CreateBackup)
 			admin.POST("/restore", userController.RestoreBackup)
+
+			// Moderation & Helpdesk
+			admin.GET("/jobs/pending", jobController.GetPendingJobs)
+			admin.POST("/jobs/:id/approve", jobController.ApproveJob)
+			admin.POST("/jobs/:id/reject", jobController.RejectJob)
+			admin.GET("/events/pending", eventController.GetPendingEvents)
+			admin.POST("/events/:id/approve", eventController.ApproveEvent)
+			admin.POST("/events/:id/reject", eventController.RejectEvent)
+			admin.GET("/helpdesk/tickets", helpdeskController.GetTickets)
+			admin.POST("/helpdesk/tickets/:id/resolve", helpdeskController.ResolveTicket)
 		}
 	}
 
@@ -169,6 +193,8 @@ func SetupRoutes(
 		legacy.POST("/auth/login", authController.Login)
 		legacy.POST("/auth/refresh-token", authController.RefreshToken)
 		legacy.POST("/auth/logout", authController.Logout)
+		legacy.POST("/auth/forgot-password", authController.ForgotPassword)
+		legacy.POST("/auth/reset-password", authController.ResetPassword)
 		legacy.GET("/users/profile", authController.GetProfile)
 		legacy.PUT("/users/profile", authController.UpdateProfile)
 		legacy.GET("/alumni/approved", alumniController.GetApprovedAlumni)
@@ -181,5 +207,6 @@ func SetupRoutes(
 		legacy.GET("/jobs/:id", jobController.GetJob)
 		legacy.GET("/gallery", galleryController.GetGallery)
 		legacy.GET("/gallery/:id", galleryController.GetGalleryItem)
+		legacy.POST("/helpdesk/submit", helpdeskController.SubmitTicket)
 	}
 }

@@ -30,71 +30,37 @@ const EventManagement = () => {
     { id: 'alumni', name: 'Alumni', icon: CheckCircleIcon }
   ];
 
-  useEffect(() => {
-    setLoading(true);
-    // Simulate API call
-    const mockEvents = [
-      {
-        id: 1,
-        title: 'Alumni Meet 2024',
-        description: 'Annual alumni reunion bringing together graduates from all batches',
-        date: '2024-03-15',
-        time: '10:00 AM',
-        location: 'MVSR Engineering College, Hyderabad',
-        category: 'alumni',
-        maxAttendees: 500,
-        currentAttendees: 245,
-        organizer: 'Alumni Association',
-        image: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzY2NzY4YSIvPgogIDx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjE4IiBmaWxsPSIjZmZmZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+RXZlbnQgSW1hZ2U8L3RleHQ+Cjwvc3ZnPg==',
-        tags: ['reunion', 'networking', 'alumni'],
-        isPast: false
-      },
-      {
-        id: 2,
-        title: 'Technical Workshop on AI/ML',
-        description: 'Hands-on workshop covering latest trends in artificial intelligence and machine learning',
-        date: '2024-03-20',
-        time: '2:00 PM',
-        location: 'Computer Science Department',
-        category: 'academic',
-        maxAttendees: 100,
-        currentAttendees: 67,
-        organizer: 'CS Department',
-        image: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzY2NzY4YSIvPgogIDx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjE4IiBmaWxsPSIjZmZmZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+RXZlbnQgSW1hZ2U8L3RleHQ+Cjwvc3ZnPg==',
-        tags: ['workshop', 'AI', 'ML', 'technology'],
-        isPast: false
-      },
-      {
-        id: 3,
-        title: 'Cultural Festival',
-        description: 'Annual cultural festival with music, dance, drama and various competitions',
-        date: '2024-02-10',
-        time: '5:00 PM',
-        location: 'College Campus',
-        category: 'cultural',
-        maxAttendees: 1000,
-        currentAttendees: 890,
-        organizer: 'Student Council',
-        image: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzY2NzY4YSIvPgogIDx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjE4IiBmaWxsPSIjZmZmZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+RXZlbnQgSW1hZ2U8L3RleHQ+Cjwvc3ZnPg==',
-        tags: ['festival', 'music', 'dance', 'cultural'],
-        isPast: true
-      }
-    ];
+  const [error, setError] = useState(null);
 
-    setTimeout(() => {
-      setEvents(mockEvents);
-      setTotalPages(Math.ceil(mockEvents.length / 6));
+  useEffect(() => {
+    fetchEvents();
+  }, []);
+
+  const fetchEvents = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/v1/events');
+      const json = await res.json();
+      if (json.success && json.data && json.data.events) {
+        setEvents(json.data.events);
+        setTotalPages(Math.ceil(json.data.events.length / 6));
+      }
+    } catch (err) {
+      console.error('Failed to fetch events:', err);
+      setError('Failed to load events. Please try again later.');
+    } finally {
       setLoading(false);
-    }, 1000);
-  }, [searchTerm, filterType, selectedCategory]);
+    }
+  };
 
   const filteredEvents = events.filter(event => {
-    const matchesSearch = event.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                     event.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = event.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                     event.description?.toLowerCase().includes(searchTerm.toLowerCase());
+    const isPast = new Date(event.event_date || event.date) < new Date();
     const matchesCategory = selectedCategory === 'all' || event.category === selectedCategory;
     const matchesFilter = filterType === 'all' || 
-                         (filterType === 'upcoming' && !event.isPast) ||
-                         (filterType === 'past' && event.isPast);
+                         (filterType === 'upcoming' && !isPast) ||
+                         (filterType === 'past' && isPast);
     return matchesSearch && matchesCategory && matchesFilter;
   });
 
@@ -109,9 +75,37 @@ const EventManagement = () => {
     setCurrentPage(page);
   };
 
-  const handleRegisterEvent = (eventId) => {
-    // Handle event registration
-    console.log('Register for event:', eventId);
+  const getOrganizerName = (organizer) => {
+    if (!organizer) return 'Unknown Organizer';
+    if (typeof organizer === 'string') return organizer;
+    if (typeof organizer === 'object') return organizer.name || organizer.Name || 'Unknown Organizer';
+    return String(organizer);
+  };
+
+  const handleRegisterEvent = async (eventId) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Please log in to register for events.');
+      return;
+    }
+    
+    try {
+      const res = await fetch(`/api/v1/events/${eventId}/register`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Successfully registered for the event!');
+      } else {
+        alert(data.message || 'Failed to register.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error registering for event.');
+    }
   };
 
   return (
@@ -186,13 +180,17 @@ const EventManagement = () => {
         )}
 
         {/* Events Grid */}
-        {!loading && (
+        {!loading && error ? (
+          <div className="text-center py-12 text-red-500">{error}</div>
+        ) : !loading && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {currentEvents.map((event) => (
+            {currentEvents.map((event) => {
+              const isPast = new Date(event.event_date || event.date) < new Date();
+              return (
               <div key={event.id} className="bg-white overflow-hidden rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200">
                 <div className="relative h-48">
                   <img
-                    src={event.image}
+                    src={event.image_url || event.image || 'https://mvsrec.edu.in/images/Events/FEST-MAIN.jpg'}
                     alt={event.title}
                     className="w-full h-full object-cover"
                   />
@@ -215,9 +213,9 @@ const EventManagement = () => {
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-lg font-semibold text-gray-900">{event.title}</h3>
                     <span className={`text-xs px-2 py-1 rounded-full ${
-                      event.isPast ? 'bg-gray-100 text-gray-600' : 'bg-green-100 text-green-800'
+                      isPast ? 'bg-gray-100 text-gray-600' : 'bg-green-100 text-green-800'
                     }`}>
-                      {event.isPast ? 'Past Event' : 'Upcoming'}
+                      {isPast ? 'Past Event' : 'Upcoming'}
                     </span>
                   </div>
                   
@@ -227,7 +225,7 @@ const EventManagement = () => {
                   
                   <div className="flex items-center text-sm text-gray-500 mb-4">
                     <ClockIcon className="h-4 w-4 mr-1" />
-                    {event.date} at {event.time}
+                    {new Date(event.event_date || event.date).toLocaleDateString()} {event.time || ''}
                   </div>
                   
                   <div className="flex items-center text-sm text-gray-500 mb-4">
@@ -239,34 +237,30 @@ const EventManagement = () => {
                     <div className="flex items-center space-x-4">
                       <div className="flex items-center text-sm text-gray-500">
                         <ClockIcon className="h-4 w-4 mr-1" />
-                        {event.maxAttendees} max
+                        {event.max_attendees || event.maxAttendees || 'Unlimited'}
                       </div>
                       <div className="flex items-center text-sm text-gray-500">
-                        {event.currentAttendees} registered
+                        {event.current_attendees || event.currentAttendees || 0} registered
                       </div>
                     </div>
                     <div className="flex items-center text-sm text-gray-500">
-                      {event.organizer}
+                      {getOrganizerName(event.organizer)}
                     </div>
                   </div>
                   
                   <div className="flex space-x-2">
                     <button
                       onClick={() => handleRegisterEvent(event.id)}
-                      className="flex-1 px-3 py-2 bg-mvsr-600 text-white rounded-md hover:bg-mvsr700 transition-colors duration-200"
+                      className="flex-1 px-3 py-2 bg-mvsr-600 text-white rounded-md hover:bg-mvsr-700 transition-colors duration-200"
                     >
-                      {event.isPast ? 'View Details' : 'Register'}
+                      {isPast ? 'View Details' : 'Register'}
                     </button>
-                    <button
-                      onClick={() => handleDeleteEvent(event.id)}
-                      className="p-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors duration-200"
-                    >
-                      <TrashIcon className="h-4 w-4" />
-                    </button>
+                    {/* Add conditional for delete based on permissions if needed */}
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

@@ -138,7 +138,7 @@ const AlumniDirectoryFixed = () => {
       <div className="relative">
         <div className="aspect-w-16 h-48 bg-gradient-to-br from-mvsr-600 to-mvsr-800 rounded-t-lg overflow-hidden">
           <img
-            src={alum.profileImage || '/api/placeholder/150/150'}
+            src={alum.profileImage || 'https://via.placeholder.com/150'}
             alt={alum.name}
             className="w-full h-full object-cover"
           />

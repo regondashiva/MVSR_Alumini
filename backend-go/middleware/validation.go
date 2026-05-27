@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -12,10 +13,22 @@ import (
 
 var validate = validator.New()
 
+type ValidationError struct {
+	Errors map[string]string
+}
+
+func (v ValidationError) Error() string {
+	return fmt.Sprintf("validation failed: %v", v.Errors)
+}
+
+func (v ValidationError) MarshalJSON() ([]byte, error) {
+	return json.Marshal(v.Errors)
+}
+
 // ValidateStruct validates a struct using validator library
 func ValidateStruct(s interface{}) error {
 	if err := validate.Struct(s); err != nil {
-		return fmt.Errorf("validation failed: %v", getValidationErrors(err))
+		return ValidationError{Errors: getValidationErrors(err)}
 	}
 	return nil
 }

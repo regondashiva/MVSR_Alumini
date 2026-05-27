@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
+import API_CONFIG from '../config/api';
 import { EyeIcon, EyeOffIcon, AcademicCapIcon, IdentificationIcon } from '@heroicons/react/outline';
 
 const LoginSimple = () => {
@@ -14,7 +15,7 @@ const LoginSimple = () => {
     setLoading(true);
     try {
       // Call the actual API endpoint
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch(API_CONFIG.getUrl(API_CONFIG.ENDPOINTS.AUTH.LOGIN), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -30,13 +31,13 @@ const LoginSimple = () => {
       if (response.ok && result.success) {
         // Store user data and token
         localStorage.setItem('user', JSON.stringify(result.data.user));
-        localStorage.setItem('token', result.data.token);
+        localStorage.setItem('token', result.data.access_token || result.data.token);
         
         toast.success('Login successful!');
         
         // Check if user is admin and redirect accordingly
         const user = result.data.user;
-        if (user.role === 'admin' || user.email === 'admin@mvsr.edu' || user.rollNumber === 'MVSR24AD0001') {
+        if (user.role === 'admin') {
           navigate('/admin-dashboard');
         } else {
           navigate('/dashboard');

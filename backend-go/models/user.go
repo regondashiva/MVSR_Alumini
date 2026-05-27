@@ -8,27 +8,31 @@ import (
 
 // User represents a user in the system
 type User struct {
-	ID          int             `json:"id"`
-	FirstName   string          `json:"firstName" validate:"required,min=2,max=50"`
-	LastName    string          `json:"lastName" validate:"required,min=2,max=50"`
-	Email       string          `json:"email" validate:"required,email"`
-	Password    string          `json:"-" validate:"required,min=6"`
-	RollNumber  string          `json:"rollNumber" validate:"required"`
-	CountryCode string          `json:"countryCode" validate:"required"`
-	PhoneNumber string          `json:"phoneNumber" validate:"required"`
-	Address     string          `json:"address" validate:"required"`
-	College     string          `json:"college" validate:"required,oneof=matrusri mvsr"`
-	Department  string          `json:"department" validate:"required"`
-	PassoutYear string          `json:"passoutYear" validate:"required"`
-	Role        string          `json:"role" validate:"required,oneof=admin alumni student faculty"`
-	IsVerified  bool            `json:"isVerified"`
-	IsActive    bool            `json:"isActive"`
-	Profile     UserProfile     `json:"profile"`
-	Social      SocialLinks     `json:"social"`
-	Preferences UserPreferences `json:"preferences"`
-	CreatedAt   time.Time       `json:"createdAt"`
-	UpdatedAt   time.Time       `json:"updatedAt"`
-	LastLogin   *time.Time      `json:"lastLogin,omitempty"`
+	ID             int             `json:"id"`
+	FirstName      string          `json:"firstName" validate:"required,min=2,max=50"`
+	LastName       string          `json:"lastName" validate:"required,min=2,max=50"`
+	Email          string          `json:"email" validate:"required,email"`
+	Password       string          `json:"-" validate:"required,min=6"`
+	RollNumber     string          `json:"rollNumber" validate:"required"`
+	CountryCode    string          `json:"countryCode" validate:"required"`
+	PhoneNumber    string          `json:"phoneNumber" validate:"required"`
+	Address        string          `json:"address" validate:"required"`
+	College        string          `json:"college" validate:"required,oneof=matrusri mvsr"`
+	Department     string          `json:"department" validate:"required"`
+	PassoutYear    string          `json:"passoutYear" validate:"required"`
+	Role           string          `json:"role" validate:"required,oneof=admin alumni student faculty"`
+	IsVerified     bool            `json:"isVerified"`
+	IsActive       bool            `json:"isActive"`
+	ApprovalStatus string          `json:"approvalStatus" validate:"oneof=pending approved rejected"` // pending, approved, rejected
+	ApprovedBy     *int            `json:"approvedBy,omitempty"`                                      // Admin user ID who approved
+	ApprovedAt     *time.Time      `json:"approvedAt,omitempty"`                                      // When approved
+	ApprovalNotes  *string         `json:"approvalNotes,omitempty"`                                   // Admin notes
+	Profile        UserProfile     `json:"profile"`
+	Social         SocialLinks     `json:"social"`
+	Preferences    UserPreferences `json:"preferences"`
+	CreatedAt      time.Time       `json:"createdAt"`
+	UpdatedAt      time.Time       `json:"updatedAt"`
+	LastLogin      *time.Time      `json:"lastLogin,omitempty"`
 }
 
 // UserProfile contains user profile information
@@ -159,15 +163,15 @@ type CreateUserRequest struct {
 	CountryCode     string `json:"countryCode" validate:"required"`
 	PhoneNumber     string `json:"phoneNumber" validate:"required"`
 	Address         string `json:"address" validate:"required"`
-	College         string `json:"college" validate:"required,oneof=matrusri mvsr"`
+	College         string `json:"college" validate:"omitempty,oneof=matrusri mvsr"`
 	Department      string `json:"department" validate:"required"`
-	PassoutYear     string `json:"passoutYear" validate:"required"`
+	PassoutYear     string `json:"passoutYear" validate:"omitempty"`
 	Role            string `json:"role" validate:"required,oneof=admin alumni student faculty"`
-	Company         string `json:"company" validate:"required"`
-	Experience      int    `json:"experience" validate:"required"`
-	RoleDescription string `json:"roleDescription" validate:"required"`
-	Industry        string `json:"industry" validate:"required"`
-	Skills          string `json:"skills" validate:"required"`
+	Company         string `json:"company" validate:"omitempty"`
+	Experience      int    `json:"experience" validate:"omitempty"`
+	RoleDescription string `json:"roleDescription" validate:"omitempty"`
+	Industry        string `json:"industry" validate:"omitempty"`
+	Skills          string `json:"skills" validate:"omitempty"`
 	OtherCompany    string `json:"otherCompany,omitempty"`
 	OtherIndustry   string `json:"otherIndustry,omitempty"`
 	OtherSkills     string `json:"otherSkills,omitempty"`
@@ -175,7 +179,8 @@ type CreateUserRequest struct {
 
 // LoginRequest represents the request body for login
 type LoginRequest struct {
-	RollNumber string `json:"rollNumber" validate:"required"`
+	Email      string `json:"email" validate:"omitempty,email"`
+	RollNumber string `json:"rollNumber" validate:"omitempty"`
 	Password   string `json:"password" validate:"required"`
 }
 

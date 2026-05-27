@@ -47,55 +47,76 @@ func (ec *EventController) CreateEvent(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "User not authenticated"})
 		return
 	}
+	role, _ := c.Get("role")
+	isActive := false
+	if r, ok := role.(string); ok && r == "admin" {
+		isActive = true
+	}
 
 	ctx := c.Request.Context()
 
 	// Create event object
 	now := time.Now()
 	event := models.Event{
-		Title:                req.Title,
-		Description:          req.Description,
-		Date:                 req.Date,
-		Time:                 req.Time,
-		EndTime:              req.EndTime,
-		Location:             req.Location,
-		Category:             req.Category,
-		Type:                 req.Type,
-		Status:               "upcoming",
-		Organizer:            req.Organizer,
-		Attendees:            models.EventAttendees{},
-		MaxAttendees:         req.MaxAttendees,
-		CurrentAttendees:     0,
-		Image:                req.Image,
-		Tags:                 req.Tags,
-		IsFeatured:           false,
-		IsPublic:             req.IsPublic,
-		RegistrationDeadline: req.RegistrationDeadline,
+		Title:            req.Title,
+		Description:      req.Description,
+		Date:             req.Date,
+		Time:             req.Time,
+		EndTime:          req.EndTime,
+		Location:         req.Location,
+		Category:         req.Category,
+		Type:             req.Type,
+		Status:           "upcoming",
+		Organizer:        req.Organizer,
+		Attendees:        models.EventAttendees{},
+		MaxAttendees:     req.MaxAttendees,
+		CurrentAttendees: 0,
+		Image:            req.Image,
+		Tags:             req.Tags,
+		IsFeatured:       false,
+	}
+	newEvent := models.Event{
+		Title:                event.Title,
+		Description:          event.Description,
+		Date:                 event.Date,
+		Time:                 event.Time,
+		EndTime:              event.EndTime,
+		Location:             event.Location,
+		Category:             event.Category,
+		Type:                 event.Type,
+		Status:               event.Status,
+		Organizer:            event.Organizer,
+		Attendees:            event.Attendees,
+		MaxAttendees:         event.MaxAttendees,
+		CurrentAttendees:     event.CurrentAttendees,
+		Image:                event.Image,
+		Tags:                 event.Tags,
+		IsFeatured:           event.IsFeatured,
+		IsPublic:             event.IsPublic,
+		RegistrationDeadline: event.RegistrationDeadline,
+		CreatedBy:            userID.(int),
 		CreatedAt:            now,
 		UpdatedAt:            now,
-		CreatedBy:            userID.(int),
 	}
 
-	// Insert event
 	query := `
 		INSERT INTO events (title, description, event_date, event_time, end_time, location, category, type, status, organizer, attendees, max_attendees, current_attendees, image_url, tags, is_featured, is_public, registration_deadline, created_by, is_active, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	res, err := ec.db.ExecContext(ctx, query,
-		event.Title, event.Description, event.Date, event.Time, event.EndTime, event.Location, event.Category, event.Type, event.Status,
-		event.Organizer, event.Attendees, event.MaxAttendees, event.CurrentAttendees, event.Image, event.Tags,
-		event.IsFeatured, event.IsPublic, event.RegistrationDeadline, event.CreatedBy, event.CreatedAt, event.UpdatedAt,
+	_, err := ec.db.ExecContext(ctx, query,
+		newEvent.Title, newEvent.Description, newEvent.Date, newEvent.Time, newEvent.EndTime,
+		newEvent.Location, newEvent.Category, newEvent.Type, newEvent.Status, newEvent.Organizer,
+		newEvent.Attendees, newEvent.MaxAttendees, newEvent.CurrentAttendees, newEvent.Image,
+		newEvent.Tags, newEvent.IsFeatured, newEvent.IsPublic, newEvent.RegistrationDeadline,
+		newEvent.CreatedBy, isActive, newEvent.CreatedAt, newEvent.UpdatedAt,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to create event", "error": err.Error()})
 		return
 	}
 
-	lastID, _ := res.LastInsertId()
-	event.ID = int(lastID)
-
-	c.JSON(http.StatusCreated, gin.H{
+	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Event created successfully",
 		"data":    gin.H{"event": event},
@@ -758,3 +779,89 @@ func (ec *EventController) GetEventStats(c *gin.Context) {
 	})
 }
 
+// GetPendingEvents returns events with is_active = false for admin review
+func (ec *EventController) GetPendingEvents(c *gin.Context) {
+	ctx := c.Request.Context()
+	query := `
+		SELECT id, title, description, event_date, event_time, end_time, location, category, type, status, organizer, attendees, max_attendees, current_attendees, image_url, tags, is_featured, is_public, registration_deadline, created_by, created_at, updated_at
+		FROM events
+		WHERE is_active = false
+		ORDER BY created_at DESC
+	`
+
+	rows, err := ec.db.QueryContext(ctx, query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch pending events", "error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var events []models.Event
+	for rows.Next() {
+		var event models.Event
+		var eventDate time.Time
+		var eventTime string
+		err := rows.Scan(
+			&event.ID, &event.Title, &event.Description, &eventDate, &eventTime, &event.EndTime,
+			&event.Location, &event.Category, &event.Type, &event.Status, &event.Organizer, &event.Attendees,
+			&event.MaxAttendees, &event.CurrentAttendees, &event.Image, &event.Tags, &event.IsFeatured,
+			&event.IsPublic, &event.RegistrationDeadline, &event.CreatedBy, &event.CreatedAt, &event.UpdatedAt,
+		)
+		if err != nil {
+			continue
+		}
+		event.Date = eventDate
+		event.Time = eventTime
+		events = append(events, event)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": events})
+}
+
+// ApproveEvent sets an event's is_active to true
+func (ec *EventController) ApproveEvent(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid event ID"})
+		return
+	}
+
+	ctx := c.Request.Context()
+	result, err := ec.db.ExecContext(ctx, "UPDATE events SET is_active = true, updated_at = ? WHERE id = ?", time.Now(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to approve event", "error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Event not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Event approved successfully"})
+}
+
+// RejectEvent deletes a pending event posting
+func (ec *EventController) RejectEvent(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid event ID"})
+		return
+	}
+
+	ctx := c.Request.Context()
+	result, err := ec.db.ExecContext(ctx, "DELETE FROM events WHERE id = ? AND is_active = false", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to reject event", "error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Event not found or already active"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Event rejected and removed"})
+}

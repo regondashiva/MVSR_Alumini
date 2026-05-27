@@ -18,12 +18,15 @@ import {
   ChatIcon,
   ShareIcon,
   OfficeBuildingIcon,
-  LocationMarkerIcon
+  LocationMarkerIcon,
+  StarIcon
 } from '@heroicons/react/outline';
 import toast from 'react-hot-toast';
+import RoleBadge from '../components/RoleBadge';
 
 const AlumniDashboard = () => {
   const navigate = useNavigate();
+  const [user, setUser] = useState(null);
   const [stats, setStats] = useState({
     totalConnections: 0,
     mentorshipRequests: 0,
@@ -40,10 +43,11 @@ const AlumniDashboard = () => {
       try {
         const parsedUser = JSON.parse(userData);
         
-        if (parsedUser.role !== 'alumni') {
+        if (parsedUser.role !== 'alumni' && parsedUser.role !== 'faculty' && parsedUser.role !== 'student') {
           navigate('/login');
           return;
         }
+        setUser(parsedUser);
       } catch (error) {
         console.error('Error parsing user data:', error);
         navigate('/login');
@@ -150,6 +154,42 @@ const AlumniDashboard = () => {
     }
   };
 
+  const getRoleBadge = (role) => {
+    return <RoleBadge role={role} size="sm" />;
+  };
+
+  const getThemeColors = (role) => {
+    switch (role) {
+      case 'faculty':
+        return {
+          primary: 'from-purple-600 to-indigo-700',
+          hover: 'hover:from-purple-700 hover:to-indigo-800',
+          text: 'text-purple-600',
+          bg: 'bg-purple-100',
+          lightBg: 'bg-purple-50',
+          border: 'border-purple-200'
+        };
+      case 'student':
+        return {
+          primary: 'from-blue-600 to-indigo-700',
+          hover: 'hover:from-blue-700 hover:to-indigo-800',
+          text: 'text-blue-600',
+          bg: 'bg-blue-100',
+          lightBg: 'bg-blue-50',
+          border: 'border-blue-200'
+        };
+      default:
+        return {
+          primary: 'from-mvsr-600 to-mvsr-700',
+          hover: 'hover:from-mvsr-700 hover:to-mvsr-800',
+          text: 'text-mvsr-600',
+          bg: 'bg-mvsr-100',
+          lightBg: 'bg-mvsr-50',
+          border: 'border-mvsr-200'
+        };
+    }
+  };
+
   const renderOverview = () => (
     <div className="space-y-6">
       {/* Stats Cards Grid */}
@@ -221,75 +261,76 @@ const AlumniDashboard = () => {
     </div>
   );
 
-  const renderQuickActions = () => (
-    <div className="bg-white rounded-xl shadow-lg p-6">
-      <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center">
-        <div className="p-2 bg-mvsr-100 rounded-lg mr-3">
-          <ChartBarIcon className="h-5 w-5 text-mvsr-600" />
+  const renderQuickActions = () => {
+    const theme = getThemeColors(user?.role);
+    return (
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center">
+          <div className={`p-2 ${theme.bg} rounded-lg mr-3`}>
+            <ChartBarIcon className={`h-5 w-5 ${theme.text}`} />
+          </div>
+          Quick Actions
+        </h3>
+        <div className="grid grid-cols-1 gap-4">
+          <button
+            onClick={() => navigate('/alumni-enhanced')}
+            className={`flex items-center p-4 bg-gradient-to-r ${theme.primary} text-white rounded-lg ${theme.hover} transition-all duration-300 transform hover:scale-105 shadow-md`}
+          >
+            <div className="p-2 bg-white/20 rounded-lg mr-4">
+              <UsersIcon className="h-6 w-6 text-white" />
+            </div>
+            <div className="text-left">
+              <p className="font-semibold">Alumni Directory</p>
+              <p className="text-sm opacity-90">Browse and connect</p>
+            </div>
+          </button>
+          
+          <button
+            onClick={() => {
+              if (user) {
+                navigate('/alumni-profile/' + user.id);
+              }
+            }}
+            className={`flex items-center p-4 bg-gradient-to-r ${theme.primary} text-white rounded-lg ${theme.hover} transition-all duration-300 transform hover:scale-105 shadow-md`}
+          >
+            <div className="p-2 bg-white/20 rounded-lg mr-4">
+              <UserGroupIcon className="h-6 w-6 text-white" />
+            </div>
+            <div className="text-left">
+              <p className="font-semibold">My Profile</p>
+              <p className="text-sm opacity-90">Update your information</p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => navigate('/events')}
+            className={`flex items-center p-4 bg-gradient-to-r ${theme.primary} text-white rounded-lg ${theme.hover} transition-all duration-300 transform hover:scale-105 shadow-md`}
+          >
+            <div className="p-2 bg-white/20 rounded-lg mr-4">
+              <CalendarIcon className="h-6 w-6 text-white" />
+            </div>
+            <div className="text-left">
+              <p className="font-semibold">Events</p>
+              <p className="text-sm opacity-90">Upcoming events</p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => navigate('/careers')}
+            className={`flex items-center p-4 bg-gradient-to-r ${theme.primary} text-white rounded-lg ${theme.hover} transition-all duration-300 transform hover:scale-105 shadow-md`}
+          >
+            <div className="p-2 bg-white/20 rounded-lg mr-4">
+              <BriefcaseIcon className="h-6 w-6 text-white" />
+            </div>
+            <div className="text-left">
+              <p className="font-semibold">Career Opportunities</p>
+              <p className="text-sm opacity-90">Job openings</p>
+            </div>
+          </button>
         </div>
-        Quick Actions
-      </h3>
-      <div className="grid grid-cols-1 gap-4">
-        <button
-          onClick={() => navigate('/alumni-enhanced')}
-          className="flex items-center p-4 bg-gradient-to-r from-mvsr-600 to-mvsr-700 text-white rounded-lg hover:from-mvsr-700 hover:to-mvsr-800 transition-all duration-300 transform hover:scale-105 shadow-md"
-        >
-          <div className="p-2 bg-white/20 rounded-lg mr-4">
-            <UsersIcon className="h-6 w-6 text-white" />
-          </div>
-          <div className="text-left">
-            <p className="font-semibold">Alumni Directory</p>
-            <p className="text-sm text-mvsr-100">Browse and connect</p>
-          </div>
-        </button>
-        
-        <button
-          onClick={() => {
-            const userData = localStorage.getItem('user');
-            if (userData) {
-              const user = JSON.parse(userData);
-              navigate('/alumni-profile/' + user.id);
-            }
-          }}
-          className="flex items-center p-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-300 transform hover:scale-105 shadow-md"
-        >
-          <div className="p-2 bg-white/20 rounded-lg mr-4">
-            <UserGroupIcon className="h-6 w-6 text-white" />
-          </div>
-          <div className="text-left">
-            <p className="font-semibold">My Profile</p>
-            <p className="text-sm text-blue-100">Update your information</p>
-          </div>
-        </button>
-
-        <button
-          onClick={() => navigate('/events')}
-          className="flex items-center p-4 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-300 transform hover:scale-105 shadow-md"
-        >
-          <div className="p-2 bg-white/20 rounded-lg mr-4">
-            <CalendarIcon className="h-6 w-6 text-white" />
-          </div>
-          <div className="text-left">
-            <p className="font-semibold">Events</p>
-            <p className="text-sm text-green-100">Upcoming events</p>
-          </div>
-        </button>
-
-        <button
-          onClick={() => navigate('/careers')}
-          className="flex items-center p-4 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all duration-300 transform hover:scale-105 shadow-md"
-        >
-          <div className="p-2 bg-white/20 rounded-lg mr-4">
-            <BriefcaseIcon className="h-6 w-6 text-white" />
-          </div>
-          <div className="text-left">
-            <p className="font-semibold">Career Opportunities</p>
-            <p className="text-sm text-purple-100">Job openings</p>
-          </div>
-        </button>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderRecentActivity = () => (
     <div className="bg-white rounded-xl shadow-lg p-6">
@@ -367,11 +408,16 @@ const AlumniDashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <div className="flex items-center justify-between">
+        <div className="bg-white rounded-lg shadow-md p-6 mb-8 border-l-4 border-l-mvsr-600">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Alumni Dashboard</h1>
-              <p className="text-gray-600">Welcome back! Here's your alumni overview</p>
+              <div className="flex items-center space-x-3 mb-1 flex-wrap gap-y-2">
+                <h1 className="text-3xl font-bold text-gray-900">Alumni Dashboard</h1>
+                {user && getRoleBadge(user.role)}
+              </div>
+              <p className="text-gray-600">
+                Welcome back, <span className="font-semibold text-gray-800">{user?.firstName} {user?.lastName}</span>! Here's your alumni overview
+              </p>
             </div>
             <div className="flex items-center space-x-4">
               <button

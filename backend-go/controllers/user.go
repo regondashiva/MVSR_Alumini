@@ -30,7 +30,7 @@ func NewUserController(cfg *config.Config) *UserController {
 const userSelectFields = `
 	id, first_name, last_name, email, password, roll_number, 
 	country_code, phone_number, address, college, department, 
-	passout_year, role, is_verified, is_active, profile_bio, 
+	passout_year, role, is_verified, is_active, approval_status, approved_by, approved_at, approval_notes, profile_bio, 
 	profile_company, profile_role, profile_experience_years, profile_industry, 
 	profile_location, profile_website, profile_skills, profile_achievements, 
 	profile_interests, profile_image, social_linkedin, social_github, 
@@ -42,16 +42,23 @@ const userSelectFields = `
 	created_at, updated_at, last_login
 `
 
-func scanUser(s interface { Scan(dest ...interface{}) error }) (models.User, error) {
+func scanUser(s interface {
+	Scan(dest ...interface{}) error
+}) (models.User, error) {
 	var user models.User
 	var profileSkills, profileAchievements, profileInterests models.JSONStringSlice
 	var lastLogin sql.NullTime
+	var approvalStatus sql.NullString
+	var approvedBy sql.NullInt64
+	var approvedAt sql.NullTime
+	var approvalNotes sql.NullString
 
 	err := s.Scan(
 		&user.ID, &user.FirstName, &user.LastName, &user.Email, &user.Password, &user.RollNumber,
 		&user.CountryCode, &user.PhoneNumber, &user.Address, &user.College, &user.Department,
-		&user.PassoutYear, &user.Role, &user.IsVerified, &user.IsActive, &user.Profile.Bio,
-		&user.Profile.Company, &user.Profile.Role, &user.Profile.ExperienceYears, &user.Profile.Industry,
+		&user.PassoutYear, &user.Role, &user.IsVerified, &user.IsActive,
+		&approvalStatus, &approvedBy, &approvedAt, &approvalNotes,
+		&user.Profile.Bio, &user.Profile.Company, &user.Profile.Role, &user.Profile.ExperienceYears, &user.Profile.Industry,
 		&user.Profile.Location, &user.Profile.Website, &profileSkills, &profileAchievements,
 		&profileInterests, &user.Profile.ProfileImage, &user.Social.LinkedIn, &user.Social.GitHub,
 		&user.Social.Twitter, &user.Social.Facebook, &user.Preferences.EmailNotifications,
@@ -70,6 +77,20 @@ func scanUser(s interface { Scan(dest ...interface{}) error }) (models.User, err
 	user.Profile.Interests = profileInterests
 	if lastLogin.Valid {
 		user.LastLogin = &lastLogin.Time
+	}
+	if approvalStatus.Valid {
+		user.ApprovalStatus = approvalStatus.String
+	}
+	if approvedBy.Valid {
+		v := int(approvedBy.Int64)
+		user.ApprovedBy = &v
+	}
+	if approvedAt.Valid {
+		user.ApprovedAt = &approvedAt.Time
+	}
+	if approvalNotes.Valid {
+		s := approvalNotes.String
+		user.ApprovalNotes = &s
 	}
 	return user, nil
 }
@@ -283,7 +304,7 @@ func (uc *UserController) GetUsersStatistics(c *gin.Context) {
 func (uc *UserController) GetPendingRegistrations(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	query := "SELECT " + userSelectFields + " FROM users WHERE is_verified = false AND is_active = true"
+	query := "SELECT " + userSelectFields + " FROM users WHERE approval_status = 'pending'"
 	rows, err := uc.db.QueryContext(ctx, query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch pending registrations", "error": err.Error()})
@@ -320,7 +341,36 @@ func (uc *UserController) ApproveRegistration(c *gin.Context) {
 		return
 	}
 
-	res, err := uc.db.ExecContext(ctx, "UPDATE users SET is_verified = true, updated_at = ? WHERE id = ?", time.Now(), userID)
+	// Get admin ID from context
+	adminID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Admin ID not found"})
+		return
+	}
+
+	adminIDInt := int(adminID.(float64))
+
+	// Parse request body for approval notes
+	var req struct {
+		ApprovalNotes string `json:"approvalNotes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// It's OK if JSON parsing fails - approval notes are optional
+	}
+
+	now := time.Now()
+	query := `
+		UPDATE users 
+		SET approval_status = 'approved', 
+		    approved_by = ?, 
+		    approved_at = ?, 
+		    approval_notes = ?,
+		    is_verified = true,
+		    updated_at = ?
+		WHERE id = ?
+	`
+
+	res, err := uc.db.ExecContext(ctx, query, adminIDInt, now, req.ApprovalNotes, now, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to approve registration", "error": err.Error()})
 		return
@@ -332,9 +382,20 @@ func (uc *UserController) ApproveRegistration(c *gin.Context) {
 		return
 	}
 
+	// Fetch and return updated user
+	selectQuery := "SELECT " + userSelectFields + " FROM users WHERE id = ?"
+	row := uc.db.QueryRowContext(ctx, selectQuery, userID)
+	user, err := scanUser(row)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch updated user"})
+		return
+	}
+	user.Password = ""
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Registration approved successfully",
+		"data":    user,
 	})
 }
 
@@ -348,7 +409,36 @@ func (uc *UserController) RejectRegistration(c *gin.Context) {
 		return
 	}
 
-	res, err := uc.db.ExecContext(ctx, "DELETE FROM users WHERE id = ?", userID)
+	// Get admin ID from context
+	adminID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Admin ID not found"})
+		return
+	}
+
+	adminIDInt := int(adminID.(float64))
+
+	// Parse request body for rejection reason
+	var req struct {
+		ApprovalNotes string `json:"approvalNotes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// It's OK if JSON parsing fails - rejection reason is optional
+	}
+
+	now := time.Now()
+	query := `
+		UPDATE users 
+		SET approval_status = 'rejected', 
+		    approved_by = ?, 
+		    approved_at = ?, 
+		    approval_notes = ?,
+		    is_active = false,
+		    updated_at = ?
+		WHERE id = ?
+	`
+
+	res, err := uc.db.ExecContext(ctx, query, adminIDInt, now, req.ApprovalNotes, now, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to reject registration", "error": err.Error()})
 		return
@@ -360,9 +450,20 @@ func (uc *UserController) RejectRegistration(c *gin.Context) {
 		return
 	}
 
+	// Fetch and return updated user
+	selectQuery := "SELECT " + userSelectFields + " FROM users WHERE id = ?"
+	row := uc.db.QueryRowContext(ctx, selectQuery, userID)
+	user, err := scanUser(row)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch updated user"})
+		return
+	}
+	user.Password = ""
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Registration rejected successfully",
+		"data":    user,
 	})
 }
 
@@ -628,4 +729,3 @@ func (uc *UserController) RestoreBackup(c *gin.Context) {
 		"message": "Backup restoration not implemented yet",
 	})
 }
-

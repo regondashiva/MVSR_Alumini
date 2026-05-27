@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS users (
     role ENUM('admin', 'alumni', 'student', 'faculty') NOT NULL,
     is_verified BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,
+    approval_status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+    approved_by INT,
+    approved_at TIMESTAMP NULL,
+    approval_notes TEXT,
     profile_bio TEXT,
     profile_company VARCHAR(255),
     profile_role VARCHAR(255),
@@ -57,7 +61,9 @@ CREATE TABLE IF NOT EXISTS users (
     INDEX idx_email (email),
     INDEX idx_roll_number (roll_number),
     INDEX idx_role (role),
-    INDEX idx_is_active (is_active)
+    INDEX idx_is_active (is_active),
+    INDEX idx_approval_status (approval_status),
+    FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Create events table
@@ -130,7 +136,7 @@ CREATE TABLE IF NOT EXISTS gallery (
 INSERT INTO users (
     first_name, last_name, email, password, roll_number, country_code, 
     phone_number, address, college, department, passout_year, role, 
-    is_verified, is_active, profile_bio, profile_company, profile_role,
+    is_verified, is_active, approval_status, approved_by, approved_at, approval_notes, profile_bio, profile_company, profile_role,
     profile_experience_years, profile_industry, profile_location,
     profile_website, profile_skills, profile_achievements,
     profile_interests, profile_image, social_linkedin, social_github,
@@ -141,9 +147,9 @@ INSERT INTO users (
     preferences_theme, preferences_language, preferences_timezone
 ) VALUES (
     'Admin', 'User', 'admin@mvsr.edu.in', 
-    '$2a$10$N9qo8uLOickgx2ZMRZoMye.IjdGxrH2e8d5t1B5.5F5F5F5F5F5F5', -- This is a placeholder hash, will be updated by seed script
+    '$2b$12$ZnYeAMBsx.rDpjQsFG9WTuWNOqe9c0BK.pt1sxQQMFU5W34PUe7QG',
     'ADMIN001', '+91', '9876543200', 'MVSR Engineering College, Hyderabad', 
-    'mvsr', 'Administration', 2020, 'admin', TRUE, TRUE,
+    'mvsr', 'Administration', 2020, 'admin', TRUE, TRUE, 'approved', NULL, NOW(), 'Pre-seeded admin account',
     'System Administrator for MVSR Alumni Portal', 'MVSR Engineering College',
     'System Administrator', 5, 'Education', 'Hyderabad, Telangana',
     'https://mvsrec.edu.in',

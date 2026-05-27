@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"mvsr-backend/config"
 	"mvsr-backend/controllers"
@@ -21,14 +22,22 @@ func main() {
 	// Initialize configuration
 	cfg := config.LoadConfig()
 
-	// Initialize database
-	if err := config.ConnectDatabase(cfg); err != nil {
-		log.Fatal("Failed to connect to database:", err)
+	// Initialize database (can be skipped in dev with SKIP_DB=true)
+	if os.Getenv("SKIP_DB") == "true" {
+		log.Println("SKIP_DB=true — skipping database connection (development mode)")
+	} else {
+		if err := config.ConnectDatabase(cfg); err != nil {
+			log.Fatal("Failed to connect to database:", err)
+		}
 	}
 
-	// Initialize Redis
-	if err := config.ConnectRedis(cfg); err != nil {
-		log.Println("Redis connection failed, continuing without cache:", err)
+	// Initialize Redis (skip when SKIP_DB is set)
+	if os.Getenv("SKIP_DB") == "true" {
+		log.Println("SKIP_DB=true — skipping Redis connection (development mode)")
+	} else {
+		if err := config.ConnectRedis(cfg); err != nil {
+			log.Println("Redis connection failed, continuing without cache:", err)
+		}
 	}
 
 	// Set Gin mode
@@ -53,9 +62,11 @@ func main() {
 	jobController := controllers.NewJobController(cfg, config.GetDatabase())
 	newsController := controllers.NewNewsController(cfg)
 	galleryController := controllers.NewGalleryController(cfg)
+	facultyController := controllers.NewFacultyController()
+	helpdeskController := controllers.NewHelpdeskController()
 
-	// Setup routes
-	routes.SetupRoutes(router, authController, userController, alumniController, eventController, jobController, newsController, galleryController)
+	// Setup routes (pass config for middleware that needs it)
+	routes.SetupRoutes(router, cfg, authController, userController, alumniController, eventController, jobController, newsController, galleryController, facultyController, helpdeskController)
 
 	// Start server
 	port := cfg.Port

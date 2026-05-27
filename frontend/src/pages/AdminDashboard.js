@@ -20,6 +20,8 @@ import {
   DatabaseIcon
 } from '@heroicons/react/outline';
 import toast from 'react-hot-toast';
+import RoleBadge from '../components/RoleBadge';
+import ApprovalNotifications from '../components/ApprovalNotifications';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -35,6 +37,9 @@ const AdminDashboard = () => {
   });
   const [helpDeskRequests, setHelpDeskRequests] = useState([]);
   const [pendingRegistrations, setPendingRegistrations] = useState([]);
+  const [recentUsers, setRecentUsers] = useState([]);
+  const [recentJobs, setRecentJobs] = useState([]);
+  const [recentEvents, setRecentEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [importFile, setImportFile] = useState(null);
   const [importType, setImportType] = useState('alumni');
@@ -46,13 +51,9 @@ const AdminDashboard = () => {
 
   const tabs = [
     { id: 'overview', name: 'Overview', icon: ChartBarIcon },
-    { id: 'users', name: 'Users', icon: UsersIcon },
-    { id: 'alumni', name: 'Alumni', icon: AcademicCapIcon },
     { id: 'approvals', name: 'Approvals', icon: CheckCircleIcon },
-    { id: 'data-import', name: 'Data Import', icon: UploadIcon },
     { id: 'helpdesk', name: 'Help Desk', icon: DocumentTextIcon },
-    { id: 'mentorship', name: 'Mentorship', icon: UserGroupIcon },
-    { id: 'recruitment', name: 'Recruitment', icon: BriefcaseIcon },
+    { id: 'data-import', name: 'Data Import', icon: UploadIcon },
     { id: 'analytics', name: 'Analytics', icon: TrendingUpIcon }
   ];
 
@@ -84,43 +85,95 @@ const AdminDashboard = () => {
   const fetchAdminData = async () => {
     try {
       setLoading(true);
+      const token = localStorage.getItem('token');
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
       
-      // Fetch pending registrations
-      const registrationsResponse = await fetch('/api/admin/pending-registrations');
-      const registrationsData = await registrationsResponse.json();
-      
-      if (registrationsResponse.ok && registrationsData.success) {
-        setPendingRegistrations(registrationsData.data);
+      // 1. Fetch pending registrations
+      try {
+        const registrationsResponse = await fetch('/api/v1/admin/pending-registrations', { headers });
+        const registrationsData = await registrationsResponse.json();
+        if (registrationsResponse.ok && registrationsData.success) {
+          setPendingRegistrations(registrationsData.data || []);
+        }
+      } catch (e) {
+        console.error('Failed to load registrations:', e);
       }
       
-      // Update stats
-      const totalPending = registrationsData.data?.length || 0;
-      const approvedCount = registrationsData.data?.filter(r => r.isVerified).length || 0;
-      
-      setStats(prev => ({
-        ...prev,
-        pendingRequests: totalPending,
-        approvedRequests: approvedCount
-      }));
-
-      setHelpDeskRequests([
-        {
-          id: 1,
-          service: 'recruit',
-          name: 'John Doe',
-          email: 'john@example.com',
-          createdAt: new Date(),
-          status: 'pending'
-        },
-        {
-          id: 2,
-          service: 'help',
-          name: 'Jane Smith',
-          email: 'jane@example.com',
-          createdAt: new Date(),
-          status: 'resolved'
+      // 2. Fetch stats
+      try {
+        const statsResponse = await fetch('/api/v1/admin/stats', { headers });
+        const statsData = await statsResponse.json();
+        if (statsResponse.ok && statsData.success) {
+          const sysStats = statsData.data?.stats || {};
+          setStats({
+            totalUsers: sysStats.totalUsers || 0,
+            totalAlumni: sysStats.usersByRole?.alumni || 0,
+            totalHelpDeskRequests: 0, // Will update from helpdesk tickets response
+            pendingRequests: pendingRegistrations.length,
+            approvedRequests: sysStats.verifiedUsers || 0,
+            mentorshipPrograms: sysStats.usersByRole?.faculty || 0,
+            recruitmentPostings: 0
+          });
         }
-      ]);
+      } catch (e) {
+        console.error('Failed to load stats:', e);
+      }
+
+      // 3. Fetch Help Desk tickets
+      try {
+        const ticketsResponse = await fetch('/api/v1/admin/helpdesk/tickets', { headers });
+        const ticketsData = await ticketsResponse.json();
+        if (ticketsResponse.ok && ticketsData.success) {
+          setHelpDeskRequests(ticketsData.data || []);
+          setStats(prev => ({
+            ...prev,
+            totalHelpDeskRequests: ticketsData.data?.length || 0,
+            pendingRequests: ticketsData.data?.filter(t => t.status === 'pending').length || 0
+          }));
+        }
+      } catch (e) {
+        console.error('Failed to load tickets:', e);
+      }
+
+      // 4. Fetch all users for recent registration list
+      try {
+        const usersResponse = await fetch('/api/v1/admin/users', { headers });
+        const usersData = await usersResponse.json();
+        if (usersResponse.ok && usersData.success) {
+          const users = usersData.data?.users || [];
+          // Sort by ID descending to get recent
+          const sortedUsers = [...users].sort((a, b) => b.id - a.id);
+          setRecentUsers(sortedUsers.slice(0, 5));
+        }
+      } catch (e) {
+        console.error('Failed to load users:', e);
+      }
+
+      // 5. Fetch recent jobs
+      try {
+        const jobsResponse = await fetch('/api/jobs');
+        const jobsData = await jobsResponse.json();
+        if (jobsResponse.ok && jobsData.success) {
+          setRecentJobs(jobsData.data?.jobs?.slice(0, 5) || []);
+        }
+      } catch (e) {
+        console.error('Failed to load jobs:', e);
+      }
+
+      // 6. Fetch recent events
+      try {
+        const eventsResponse = await fetch('/api/events');
+        const eventsData = await eventsResponse.json();
+        if (eventsResponse.ok && eventsData.success) {
+          setRecentEvents(eventsData.data?.events?.slice(0, 5) || []);
+        }
+      } catch (e) {
+        console.error('Failed to load events:', e);
+      }
+
     } catch (error) {
       console.error('Error fetching admin data:', error);
       toast.error('Failed to load admin data');
@@ -132,14 +185,15 @@ const AdminDashboard = () => {
   const handleApproveRequest = async (requestId, action) => {
     try {
       const token = localStorage.getItem('token');
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
       
       if (action === 'approve') {
-        const response = await fetch(`/api/admin/approve-registration/${requestId}`, {
+        const response = await fetch(`/api/v1/admin/approve-registration/${requestId}`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          }
+          headers
         });
         
         if (response.ok) {
@@ -148,12 +202,9 @@ const AdminDashboard = () => {
           toast.error('Failed to approve registration');
         }
       } else if (action === 'reject') {
-        const response = await fetch(`/api/admin/reject-registration/${requestId}`, {
+        const response = await fetch(`/api/v1/admin/reject-registration/${requestId}`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          }
+          headers
         });
         
         if (response.ok) {
@@ -179,30 +230,32 @@ const AdminDashboard = () => {
     setProcessingBulk(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('/api/admin/bulk-approve-registrations', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          registrationIds: selectedRegistrations,
-          action: action
-        })
+      const promises = selectedRegistrations.map(id => {
+        const endpoint = action === 'approve'
+          ? `/api/v1/admin/approve-registration/${id}`
+          : `/api/v1/admin/reject-registration/${id}`;
+        return fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        });
       });
 
-      const result = await response.json();
+      const responses = await Promise.all(promises);
+      const successCount = responses.filter(r => r.ok).length;
 
-      if (response.ok && result.success) {
-        toast.success(`Successfully ${action}d ${result.data.count} registrations`);
+      if (successCount > 0) {
+        toast.success(`Successfully processed ${successCount} registrations`);
         setSelectedRegistrations([]);
         fetchAdminData();
       } else {
-        toast.error(result.message || `Failed to ${action} registrations`);
+        toast.error(`Failed to process registrations`);
       }
     } catch (error) {
       console.error('Bulk approval error:', error);
-      toast.error(`Failed to ${action} registrations`);
+      toast.error(`Failed to process registrations`);
     } finally {
       setProcessingBulk(false);
     }
@@ -594,7 +647,9 @@ const AdminDashboard = () => {
                     </div>
                     <div>
                       <span className="font-medium text-gray-700">Role:</span>
-                      <p className="text-gray-600">{registration.role}</p>
+                      <div className="mt-1">
+                        <RoleBadge role={registration.role} size="sm" />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -934,6 +989,11 @@ const AdminDashboard = () => {
               <p className="text-gray-600">Manage the entire platform from here</p>
             </div>
             <div className="flex items-center space-x-4">
+              {/* Approval Notifications Bell */}
+              <div className="border-r border-gray-300 pr-4">
+                <ApprovalNotifications onApprovalUpdate={() => fetchAdminData()} />
+              </div>
+              
               <button
                 onClick={() => navigate('/dashboard')}
                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"

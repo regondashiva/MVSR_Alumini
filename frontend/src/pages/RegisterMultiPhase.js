@@ -198,7 +198,7 @@ const RegisterMultiPhase = () => {
         lastName: data.lastName,
         email: data.email,
         password: data.password,
-        rollNumber: data.rollNumber,
+        rollNumber: userType === 'faculty' ? (data.facultyId || data.rollNumber) : data.rollNumber,
         countryCode: data.countryCode,
         phoneNumber: data.phoneNumber,
         address: data.address,
@@ -603,17 +603,17 @@ const RegisterMultiPhase = () => {
             </div>
 
             <div>
-              <label htmlFor="role" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="roleDescription" className="block text-sm font-medium text-gray-700">
                 Role Description *
               </label>
               <input
-                {...register('role', { required: 'Role is required' })}
+                {...register('roleDescription', { required: 'Role description is required' })}
                 type="text"
                 className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-mvsr-500 focus:border-mvsr-500 sm:text-sm"
                 placeholder="Your current role"
               />
-              {errors.role && (
-                <p className="mt-1 text-sm text-red-600">{errors.role.message}</p>
+              {errors.roleDescription && (
+                <p className="mt-1 text-sm text-red-600">{errors.roleDescription.message}</p>
               )}
             </div>
           </div>
