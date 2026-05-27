@@ -1,10 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SearchIcon, CalendarIcon, UserIcon, ArrowRightIcon, DocumentTextIcon } from '@heroicons/react/outline';
 
 const News = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [activeTab, setActiveTab] = useState('news');
+  const [content, setContent] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetchNews();
+  }, []);
+
+  const fetchNews = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/v1/news');
+      const json = await res.json();
+      if (json.success && json.data && json.data.news) {
+        setContent(json.data.news);
+      }
+    } catch (err) {
+      console.error('Failed to fetch news:', err);
+      setError('Failed to load news. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const contentCategories = [
     { id: 'all', name: 'All Content', icon: DocumentTextIcon },
@@ -19,79 +41,8 @@ const News = () => {
     { value: 'infrastructure', label: 'Infrastructure' },
     { value: 'placements', label: 'Placements' },
     { value: 'alumni', label: 'Alumni' },
-    { value: 'events', label: 'Events' }
-  ];
-
-  const content = [
-    // News Content
-    {
-      id: 1,
-      title: 'MVSR Ranks Among Top Engineering Colleges in India',
-      excerpt: 'MVSR Engineering College has been ranked among the top 50 engineering colleges in India according to the latest NIRF rankings.',
-      content: 'MVSR Engineering College has achieved a significant milestone by being ranked among the top 50 engineering colleges in India. This recognition reflects our commitment to academic excellence, research, and overall development of students.',
-      author: 'Admin',
-      date: '2024-02-15',
-      category: 'news',
-      image: '/api/placeholder/800/400',
-      featured: true
-    },
-    {
-      id: 2,
-      title: 'New Research Center for AI and Machine Learning Inaugurated',
-      excerpt: 'A state-of-the-art research center for artificial intelligence and machine learning has been inaugurated at MVSR campus.',
-      content: 'The new research center will focus on cutting-edge research in AI and ML, providing students and faculty with world-class facilities to work on innovative projects.',
-      author: 'Dr. Ramesh Kumar',
-      date: '2024-02-10',
-      category: 'news',
-      image: '/api/placeholder/800/400',
-      featured: true
-    },
-    {
-      id: 3,
-      title: 'Placement Drive 2024: Record Breaking Results',
-      excerpt: 'This year\'s placement drive has seen record-breaking numbers with 95% of students getting placed in top companies.',
-      content: 'The placement season 2024 has been exceptional for MVSR students with top companies like Microsoft, Google, Amazon, and others recruiting our students with attractive packages.',
-      author: 'Placement Cell',
-      date: '2024-02-05',
-      category: 'news',
-      image: '/api/placeholder/800/400',
-      featured: false
-    },
-    
-    // Learning Resources
-    {
-      id: 4,
-      title: 'Introduction to React Development',
-      excerpt: 'Comprehensive guide to getting started with React.js for modern web development.',
-      content: 'Learn the fundamentals of React.js including components, state management, hooks, and best practices. This resource includes practical examples and hands-on exercises to help you master React development.',
-      author: 'Computer Science Department',
-      date: '2024-02-01',
-      category: 'learning',
-      image: '/api/placeholder/800/400',
-      featured: true
-    },
-    {
-      id: 5,
-      title: 'Machine Learning Basics Course',
-      excerpt: 'Free online course covering ML fundamentals and practical applications.',
-      content: 'Introduction to machine learning concepts including supervised learning, unsupervised learning, neural networks, and deep learning. Includes hands-on projects and real-world case studies.',
-      author: 'AI Research Center',
-      date: '2024-01-28',
-      category: 'learning',
-      image: '/api/placeholder/800/400',
-      featured: false
-    },
-    {
-      id: 6,
-      title: 'MVSR Students Win National Hackathon',
-      excerpt: 'Our students have won the national hackathon competition, showcasing their innovative solutions to real-world problems.',
-      content: 'The team of computer science students developed an innovative solution for smart city management that impressed the judges.',
-      author: 'Student Affairs',
-      date: '2024-01-15',
-      category: 'achievements',
-      image: '/api/placeholder/800/400',
-      featured: false
-    }
+    { value: 'events', label: 'Events' },
+    { value: 'learning', label: 'Learning' }
   ];
 
   const filteredContent = content.filter(item => 
@@ -167,12 +118,12 @@ const News = () => {
                       {article.title}
                     </h3>
                     <p className="text-gray-600 mb-4 line-clamp-3">
-                      {article.excerpt}
+                      {article.content}
                     </p>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center text-sm text-gray-500">
                         <UserIcon className="h-4 w-4 mr-2" />
-                        {article.author}
+                        {article.author || 'Admin'}
                       </div>
                       <button className="text-mvsr-600 hover:text-mvsr-700 font-medium flex items-center">
                         Read More
@@ -202,32 +153,38 @@ const News = () => {
 
         {/* Content Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredContent.filter(item => item.title.toLowerCase().includes(searchTerm.toLowerCase())).map((article) => (
+          {loading ? (
+            <div className="col-span-full text-center py-12 text-gray-500">Loading news...</div>
+          ) : error ? (
+            <div className="col-span-full text-center py-12 text-red-500">{error}</div>
+          ) : filteredContent.filter(item => item.title?.toLowerCase().includes(searchTerm.toLowerCase())).map((article) => (
             <article key={article.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-200">
               <img 
-                src={article.image} 
+                src={article.image || 'https://via.placeholder.com/800x400'} 
                 alt={article.title}
                 className="w-full h-48 object-cover"
               />
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <span className={`px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-xs font-medium`}>
-                    {article.category}
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    {new Date(article.date).toLocaleDateString()}
-                  </span>
+              <div className="p-6 flex flex-col h-full">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <span className={`px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-xs font-medium capitalize`}>
+                      {article.category || 'General'}
+                    </span>
+                    <span className="text-sm text-gray-500">
+                      {new Date(article.createdAt || article.created_at || Date.now()).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                    {article.title}
+                  </h3>
+                  <p className="text-gray-600 mb-4 line-clamp-3">
+                    {article.content}
+                  </p>
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                  {article.title}
-                </h3>
-                <p className="text-gray-600 mb-4 line-clamp-3">
-                  {article.excerpt}
-                </p>
-                <div className="flex items-center justify-between">
+                <div className="mt-auto flex items-center justify-between pt-4 border-t border-gray-100">
                   <div className="flex items-center text-sm text-gray-500">
                     <UserIcon className="h-4 w-4 mr-2" />
-                    {article.author}
+                    {article.author || 'Admin'}
                   </div>
                   <button className="text-mvsr-600 hover:text-mvsr-700 font-medium flex items-center">
                     Read More

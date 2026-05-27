@@ -13,6 +13,8 @@ import {
   SupportIcon,
   ChartBarIcon
 } from '@heroicons/react/outline';
+import RoleBadge from './RoleBadge';
+import ApprovalNotifications from './ApprovalNotifications';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -137,8 +139,23 @@ const Navbar = () => {
           <div className="hidden md:flex items-center space-x-4">
             {user ? (
               <div className="flex items-center space-x-3">
+                {/* Admin Notifications */}
+                {user.role === 'admin' && (
+                  <ApprovalNotifications onApprovalUpdate={() => {}} />
+                )}
+                
+                {/* User Info with Role Badge */}
+                <div className="flex items-center space-x-2 px-3 py-2 rounded-md bg-gray-50 dark:bg-gray-700">
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      {user.firstName}
+                    </p>
+                  </div>
+                  <RoleBadge role={user.role} size="sm" />
+                </div>
+                
                 <Link
-                  to="/dashboard"
+                  to={user.role === 'admin' ? '/admin-dashboard' : '/dashboard'}
                   className="text-gray-700 hover:text-mvsr-600 px-3 py-2 rounded-md text-sm font-medium"
                 >
                   Dashboard
@@ -253,7 +270,7 @@ const Navbar = () => {
               {user ? (
                 <>
                   <Link
-                    to="/dashboard"
+                    to={user.role === 'admin' ? '/admin-dashboard' : '/dashboard'}
                     className="flex items-center px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-mvsr-600 hover:bg-mvsr-50"
                     onClick={() => setIsOpen(false)}
                   >

@@ -128,13 +128,24 @@ const API_CONFIG = {
   
   // Helper function to get full URL
   getUrl: (endpoint, params = {}) => {
-    let url = endpoint;
-    
     // Replace path parameters
+    let url = endpoint;
     Object.keys(params).forEach(key => {
       url = url.replace(`:${key}`, params[key]);
     });
-    
+
+    // If the endpoint is already an absolute URL, return it
+    if (/^https?:\/\//i.test(url)) return url;
+
+    // If BASE_URL is provided, combine it with the endpoint
+    const base = API_CONFIG.BASE_URL ? API_CONFIG.BASE_URL.replace(/\/$/, '') : '';
+    if (base) {
+      // ensure single slash between base and path
+      const path = url.startsWith('/') ? url : `/${url}`;
+      return `${base}${path}`;
+    }
+
+    // Fallback to relative path (useful when using CRA proxy)
     return url;
   },
   

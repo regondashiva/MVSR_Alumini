@@ -46,6 +46,10 @@ func main() {
 		role ENUM('admin', 'alumni', 'student', 'faculty') NOT NULL,
 		is_verified BOOLEAN DEFAULT FALSE,
 		is_active BOOLEAN DEFAULT TRUE,
+		approval_status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+		approved_by INT,
+		approved_at TIMESTAMP NULL,
+		approval_notes TEXT,
 		profile_bio TEXT,
 		profile_company VARCHAR(255),
 		profile_role VARCHAR(255),
@@ -145,6 +149,7 @@ func main() {
 		job_type VARCHAR(50),
 		experience_required VARCHAR(100),
 		skills_required JSON,
+		posted_by INT,
 		is_active BOOLEAN DEFAULT TRUE,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -154,6 +159,9 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to create jobs table:", err)
 	}
+
+	// Add posted_by column if it doesn't exist (for existing tables)
+	_, _ = db.Exec("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS posted_by INT AFTER skills_required")
 
 	// Create gallery table
 	galleryTable := `
@@ -174,6 +182,28 @@ func main() {
 		log.Fatal("Failed to create gallery table:", err)
 	}
 
+	// Create helpdesk_tickets table
+	helpdeskTicketsTable := `
+	CREATE TABLE IF NOT EXISTS helpdesk_tickets (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		user_id INT,
+		name VARCHAR(255) NOT NULL,
+		email VARCHAR(255) NOT NULL,
+		phone VARCHAR(50),
+		service VARCHAR(100) NOT NULL,
+		message TEXT,
+		details JSON,
+		status ENUM('pending', 'resolved') DEFAULT 'pending',
+		admin_remarks TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
+
+	_, err = db.Exec(helpdeskTicketsTable)
+	if err != nil {
+		log.Fatal("Failed to create helpdesk_tickets table:", err)
+	}
+
 	// Create refresh_tokens table
 	refreshTokensTable := `
 	CREATE TABLE IF NOT EXISTS refresh_tokens (
@@ -192,6 +222,23 @@ func main() {
 		log.Fatal("Failed to create refresh_tokens table:", err)
 	}
 
+	passwordResetTokensTable := `
+	CREATE TABLE IF NOT EXISTS password_reset_tokens (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		user_id INT NOT NULL,
+		token VARCHAR(512) NOT NULL UNIQUE,
+		expires_at DATETIME NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		CONSTRAINT fk_password_reset_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+		INDEX idx_password_reset_tokens_user_id (user_id),
+		INDEX idx_password_reset_tokens_token (token(255))
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
+
+	_, err = db.Exec(passwordResetTokensTable)
+	if err != nil {
+		log.Fatal("Failed to create password_reset_tokens table:", err)
+	}
+
 	fmt.Println("✅ Database schema created successfully!")
 	fmt.Println("📊 Tables created:")
 	fmt.Println("   - users")
@@ -199,7 +246,9 @@ func main() {
 	fmt.Println("   - news")
 	fmt.Println("   - jobs")
 	fmt.Println("   - gallery")
+	fmt.Println("   - helpdesk_tickets")
 	fmt.Println("   - refresh_tokens")
+	fmt.Println("   - password_reset_tokens")
 	fmt.Println("🎯 Database: mvsr_alumni")
 	fmt.Println("🔧 MySQL connection: localhost:3306")
 }

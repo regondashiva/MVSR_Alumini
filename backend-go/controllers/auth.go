@@ -81,6 +81,23 @@ func (ac *AuthController) generateRefreshToken(userID int) (string, error) {
 	return tokenStr, nil
 }
 
+func (ac *AuthController) ensurePasswordResetTable() error {
+	createTable := `
+	CREATE TABLE IF NOT EXISTS password_reset_tokens (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		user_id INT NOT NULL,
+		token VARCHAR(255) NOT NULL UNIQUE,
+		expires_at DATETIME NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		CONSTRAINT fk_password_reset_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+		INDEX idx_password_reset_user_id (user_id),
+		INDEX idx_password_reset_token (token(255))
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
+
+	_, err := ac.db.Exec(createTable)
+	return err
+}
+
 // ─────────────────────────────────────────────
 //  AUTH HANDLERS
 // ─────────────────────────────────────────────
@@ -124,20 +141,29 @@ func (ac *AuthController) Register(c *gin.Context) {
 		INSERT INTO users (
 			first_name, last_name, email, password, roll_number, country_code, 
 			phone_number, address, college, department, passout_year, role, 
-			is_verified, is_active, profile_company, profile_role, 
+			is_verified, is_active, approval_status, profile_company, profile_role, 
 			profile_experience_years, profile_industry, profile_skills,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	now := time.Now()
 	isVerified := req.Role == "admin"
+	approvalStatus := "approved" // Admin users auto-approved
+	if req.Role != "admin" {
+		approvalStatus = "pending" // Faculty, students, alumni need approval
+	}
 	skills := models.JSONStringSlice{req.Skills}
+
+	var passoutYear interface{} = req.PassoutYear
+	if req.PassoutYear == "" {
+		passoutYear = nil
+	}
 
 	_, err = ac.db.Exec(query,
 		req.FirstName, req.LastName, req.Email, hashedPassword, req.RollNumber, req.CountryCode,
-		req.PhoneNumber, req.Address, req.College, req.Department, req.PassoutYear, req.Role,
-		isVerified, true, req.Company, req.RoleDescription,
+		req.PhoneNumber, req.Address, req.College, req.Department, passoutYear, req.Role,
+		isVerified, true, approvalStatus, req.Company, req.RoleDescription,
 		req.Experience, req.Industry, skills,
 		now, now,
 	)
@@ -154,22 +180,23 @@ func (ac *AuthController) Register(c *gin.Context) {
 	}
 
 	user := models.User{
-		ID:          userID,
-		FirstName:   req.FirstName,
-		LastName:    req.LastName,
-		Email:       req.Email,
-		RollNumber:  req.RollNumber,
-		CountryCode: req.CountryCode,
-		PhoneNumber: req.PhoneNumber,
-		Address:     req.Address,
-		College:     req.College,
-		Department:  req.Department,
-		PassoutYear: req.PassoutYear,
-		Role:        req.Role,
-		IsVerified:  isVerified,
-		IsActive:    true,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:             userID,
+		FirstName:      req.FirstName,
+		LastName:       req.LastName,
+		Email:          req.Email,
+		RollNumber:     req.RollNumber,
+		CountryCode:    req.CountryCode,
+		PhoneNumber:    req.PhoneNumber,
+		Address:        req.Address,
+		College:        req.College,
+		Department:     req.Department,
+		PassoutYear:    req.PassoutYear,
+		Role:           req.Role,
+		IsVerified:     isVerified,
+		IsActive:       true,
+		ApprovalStatus: approvalStatus,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 
 	accessToken, err := ac.generateAccessToken(user)
@@ -203,38 +230,74 @@ func (ac *AuthController) Login(c *gin.Context) {
 		return
 	}
 
+	fmt.Printf("Login attempt received: email=%q rollNumber=%q origin=%q\n", req.Email, req.RollNumber, c.GetHeader("Origin"))
+
+	if strings.TrimSpace(req.Email) == "" && strings.TrimSpace(req.RollNumber) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Email or roll number is required"})
+		return
+	}
+
 	if err := middleware.ValidateStruct(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Validation failed", "errors": err.Error()})
 		return
 	}
 
-	var user models.User
-	query := `
-		SELECT id, first_name, last_name, email, password, roll_number, country_code,
-		       phone_number, address, college, department, passout_year, role,
-		       is_verified, is_active, profile_company, profile_role,
-		       profile_experience_years, profile_industry, profile_skills,
-		       created_at, updated_at, last_login
-		FROM users WHERE roll_number = ?
-	`
+	lookupField := "roll_number"
+	lookupValue := req.RollNumber
+	if strings.TrimSpace(req.Email) != "" {
+		lookupField = "email"
+		lookupValue = strings.TrimSpace(strings.ToLower(req.Email))
+	}
 
+	query := fmt.Sprintf(`
+		SELECT id, first_name, last_name, email, password, roll_number, 
+		       COALESCE(country_code, ''),
+		       COALESCE(phone_number, ''), 
+		       COALESCE(address, ''), 
+		       COALESCE(college, ''), 
+		       COALESCE(department, ''), 
+		       COALESCE(CAST(passout_year AS CHAR), ''), 
+		       role,
+		       is_verified, is_active, 
+		       COALESCE(approval_status, 'approved'),
+		       COALESCE(approval_notes, ''),
+		       COALESCE(profile_company, ''), 
+		       COALESCE(profile_role, ''),
+		       COALESCE(profile_experience_years, 0), 
+		       COALESCE(profile_industry, ''), 
+		       COALESCE(profile_skills, '[]'),
+		       created_at, updated_at, last_login
+		FROM users WHERE %s = ?
+	`, lookupField)
+
+	var user models.User
 	var profileSkills models.JSONStringSlice
 	var lastLogin sql.NullTime
-	err := ac.db.QueryRow(query, req.RollNumber).Scan(
+	var approvalNotes sql.NullString
+	err := ac.db.QueryRow(query, lookupValue).Scan(
 		&user.ID, &user.FirstName, &user.LastName, &user.Email, &user.Password, &user.RollNumber, &user.CountryCode,
 		&user.PhoneNumber, &user.Address, &user.College, &user.Department, &user.PassoutYear, &user.Role,
-		&user.IsVerified, &user.IsActive, &user.Profile.Company, &user.Profile.Role,
+		&user.IsVerified, &user.IsActive, &user.ApprovalStatus, &approvalNotes,
+		&user.Profile.Company, &user.Profile.Role,
 		&user.Profile.ExperienceYears, &user.Profile.Industry, &profileSkills,
 		&user.CreatedAt, &user.UpdatedAt, &lastLogin,
 	)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Invalid roll number or password"})
+		if err == sql.ErrNoRows {
+			fmt.Printf("Login: user not found with %s = %q\n", lookupField, lookupValue)
+		} else {
+			fmt.Printf("Login scan error (field=%s, value=%q): %v\n", lookupField, lookupValue, err)
+		}
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Invalid email/roll number or password"})
 		return
 	}
 
 	user.Profile.Skills = profileSkills
 	if lastLogin.Valid {
 		user.LastLogin = &lastLogin.Time
+	}
+	if approvalNotes.Valid {
+		user.ApprovalNotes = &approvalNotes.String
 	}
 
 	if err := config.CheckPassword(req.Password, user.Password); err != nil {
@@ -269,6 +332,7 @@ func (ac *AuthController) Login(c *gin.Context) {
 		"message": "Login successful",
 		"data": gin.H{
 			"user":          user,
+			"token":         accessToken,
 			"access_token":  accessToken,
 			"refresh_token": refreshToken,
 			"expires_in":    900, // 15 minutes in seconds
@@ -402,27 +466,42 @@ func (ac *AuthController) GetProfile(c *gin.Context) {
 
 	var user models.User
 	query := `
-		SELECT id, first_name, last_name, email, roll_number, country_code,
-		       phone_number, address, college, department, passout_year, role,
-		       is_verified, is_active, profile_bio, profile_company, profile_role,
-		       profile_experience_years, profile_industry, profile_location,
-		       profile_website, profile_skills, profile_achievements,
-		       profile_interests, profile_image, social_linkedin, social_github,
-		       social_twitter, social_facebook, preferences_email_notifications,
-		       preferences_push_notifications, preferences_show_email,
-		       preferences_show_phone, preferences_show_profile,
-		       preferences_allow_messages, preferences_show_connections,
-		       preferences_theme, preferences_language, preferences_timezone,
+		SELECT id, first_name, last_name, email, roll_number, 
+		       COALESCE(country_code, ''), COALESCE(phone_number, ''), 
+		       COALESCE(address, ''), COALESCE(college, ''), 
+		       COALESCE(department, ''), COALESCE(CAST(passout_year AS CHAR), ''), 
+		       role, is_verified, is_active, 
+		       COALESCE(approval_status, 'approved'),
+		       COALESCE(approval_notes, ''),
+		       COALESCE(profile_bio, ''), COALESCE(profile_company, ''), 
+		       COALESCE(profile_role, ''), COALESCE(profile_experience_years, 0), 
+		       COALESCE(profile_industry, ''), COALESCE(profile_location, ''),
+		       COALESCE(profile_website, ''), COALESCE(profile_skills, '[]'), 
+		       COALESCE(profile_achievements, '[]'), COALESCE(profile_interests, '[]'), 
+		       COALESCE(profile_image, ''), 
+		       COALESCE(social_linkedin, ''), COALESCE(social_github, ''),
+		       COALESCE(social_twitter, ''), COALESCE(social_facebook, ''), 
+		       COALESCE(preferences_email_notifications, true),
+		       COALESCE(preferences_push_notifications, true), 
+		       COALESCE(preferences_show_email, true),
+		       COALESCE(preferences_show_phone, true), 
+		       COALESCE(preferences_show_profile, true),
+		       COALESCE(preferences_allow_messages, true), 
+		       COALESCE(preferences_show_connections, true),
+		       COALESCE(preferences_theme, 'light'), 
+		       COALESCE(preferences_language, 'en'), 
+		       COALESCE(preferences_timezone, 'Asia/Kolkata'),
 		       created_at, updated_at, last_login
 		FROM users WHERE id = ?
 	`
 
 	var profileSkills, profileAchievements, profileInterests models.JSONStringSlice
 	var lastLogin sql.NullTime
+	var approvalNotes sql.NullString
 	err := ac.db.QueryRow(query, userID).Scan(
 		&user.ID, &user.FirstName, &user.LastName, &user.Email, &user.RollNumber, &user.CountryCode,
 		&user.PhoneNumber, &user.Address, &user.College, &user.Department, &user.PassoutYear, &user.Role,
-		&user.IsVerified, &user.IsActive, &user.Profile.Bio, &user.Profile.Company, &user.Profile.Role,
+		&user.IsVerified, &user.IsActive, &user.ApprovalStatus, &approvalNotes, &user.Profile.Bio, &user.Profile.Company, &user.Profile.Role,
 		&user.Profile.ExperienceYears, &user.Profile.Industry, &user.Profile.Location,
 		&user.Profile.Website, &profileSkills, &profileAchievements,
 		&profileInterests, &user.Profile.ProfileImage, &user.Social.LinkedIn, &user.Social.GitHub,
@@ -447,6 +526,9 @@ func (ac *AuthController) GetProfile(c *gin.Context) {
 	user.Profile.Interests = profileInterests
 	if lastLogin.Valid {
 		user.LastLogin = &lastLogin.Time
+	}
+	if approvalNotes.Valid {
+		user.ApprovalNotes = &approvalNotes.String
 	}
 	user.Password = ""
 
@@ -509,17 +591,29 @@ func (ac *AuthController) UpdateProfile(c *gin.Context) {
 
 	var user models.User
 	query = `
-		SELECT id, first_name, last_name, email, roll_number, country_code,
-		       phone_number, address, college, department, passout_year, role,
-		       is_verified, is_active, profile_bio, profile_company, profile_role,
-		       profile_experience_years, profile_industry, profile_location,
-		       profile_website, profile_skills, profile_achievements,
-		       profile_interests, profile_image, social_linkedin, social_github,
-		       social_twitter, social_facebook, preferences_email_notifications,
-		       preferences_push_notifications, preferences_show_email,
-		       preferences_show_phone, preferences_show_profile,
-		       preferences_allow_messages, preferences_show_connections,
-		       preferences_theme, preferences_language, preferences_timezone,
+		SELECT id, first_name, last_name, email, roll_number, 
+		       COALESCE(country_code, ''), COALESCE(phone_number, ''), 
+		       COALESCE(address, ''), COALESCE(college, ''), 
+		       COALESCE(department, ''), COALESCE(CAST(passout_year AS CHAR), ''), 
+		       role, is_verified, is_active, 
+		       COALESCE(profile_bio, ''), COALESCE(profile_company, ''), 
+		       COALESCE(profile_role, ''), COALESCE(profile_experience_years, 0), 
+		       COALESCE(profile_industry, ''), COALESCE(profile_location, ''),
+		       COALESCE(profile_website, ''), COALESCE(profile_skills, '[]'), 
+		       COALESCE(profile_achievements, '[]'), COALESCE(profile_interests, '[]'), 
+		       COALESCE(profile_image, ''), 
+		       COALESCE(social_linkedin, ''), COALESCE(social_github, ''),
+		       COALESCE(social_twitter, ''), COALESCE(social_facebook, ''), 
+		       COALESCE(preferences_email_notifications, true),
+		       COALESCE(preferences_push_notifications, true), 
+		       COALESCE(preferences_show_email, true),
+		       COALESCE(preferences_show_phone, true), 
+		       COALESCE(preferences_show_profile, true),
+		       COALESCE(preferences_allow_messages, true), 
+		       COALESCE(preferences_show_connections, true),
+		       COALESCE(preferences_theme, 'light'), 
+		       COALESCE(preferences_language, 'en'), 
+		       COALESCE(preferences_timezone, 'Asia/Kolkata'),
 		       created_at, updated_at, last_login
 		FROM users WHERE id = ?
 	`
@@ -637,9 +731,89 @@ func (ac *AuthController) VerifyEmail(c *gin.Context) {
 }
 
 func (ac *AuthController) ForgotPassword(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"success": false, "message": "Forgot password not implemented yet"})
+	if err := ac.ensurePasswordResetTable(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to prepare password reset storage", "error": err.Error()})
+		return
+	}
+
+	var req struct {
+		Email string `json:"email" binding:"required,email"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request body", "errors": err.Error()})
+		return
+	}
+
+	var userID int
+	err := ac.db.QueryRow("SELECT id FROM users WHERE email = ?", strings.TrimSpace(strings.ToLower(req.Email))).Scan(&userID)
+	if err != nil {
+		// Do not expose whether the email exists.
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "If an account with that email exists, a password reset token has been generated."})
+		return
+	}
+
+	token := uuid.NewString()
+	expiresAt := time.Now().Add(1 * time.Hour)
+	_, err = ac.db.Exec("INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)", userID, token, expiresAt)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to create password reset token", "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Password reset token created. Use this token to reset your password.",
+		"data":    gin.H{"reset_token": token, "expires_in": 3600},
+	})
 }
 
 func (ac *AuthController) ResetPassword(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"success": false, "message": "Password reset not implemented yet"})
+	if err := ac.ensurePasswordResetTable(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to prepare password reset storage", "error": err.Error()})
+		return
+	}
+
+	var req struct {
+		Token       string `json:"token" binding:"required"`
+		NewPassword string `json:"newPassword" binding:"required,min=6"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request body", "errors": err.Error()})
+		return
+	}
+
+	var userID int
+	var expiresAt time.Time
+	err := ac.db.QueryRow("SELECT user_id, expires_at FROM password_reset_tokens WHERE token = ?", req.Token).Scan(&userID, &expiresAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid or expired reset token"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to look up reset token", "error": err.Error()})
+		return
+	}
+
+	if time.Now().After(expiresAt) {
+		ac.db.Exec("DELETE FROM password_reset_tokens WHERE token = ?", req.Token)
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Reset token has expired"})
+		return
+	}
+
+	hashedPassword, err := config.HashPassword(req.NewPassword)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to hash new password"})
+		return
+	}
+
+	_, err = ac.db.Exec("UPDATE users SET password = ?, updated_at = ? WHERE id = ?", hashedPassword, time.Now(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update password", "error": err.Error()})
+		return
+	}
+
+	ac.db.Exec("DELETE FROM password_reset_tokens WHERE token = ?", req.Token)
+	ac.db.Exec("DELETE FROM refresh_tokens WHERE user_id = ?", userID)
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Password reset successfully. Please log in with your new password."})
 }

@@ -22,6 +22,28 @@ const Gallery = () => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [likedItems, setLikedItems] = useState(new Set());
 
+  const DEFAULT_GALLERY_IMAGE = {
+    url: 'https://via.placeholder.com/1200x800?text=No+Image',
+    alt: 'Gallery image not available',
+    caption: 'No image available',
+  };
+
+  const normalizeGalleryItem = (item) => {
+    const images = Array.isArray(item.images) && item.images.length ? item.images : [DEFAULT_GALLERY_IMAGE];
+    const tags = Array.isArray(item.tags) ? item.tags : [];
+
+    return {
+      ...item,
+      images,
+      tags,
+      likes: typeof item.likes === 'number' ? item.likes : 0,
+      views: typeof item.views === 'number' ? item.views : 0,
+      createdAt: item.createdAt || item.created_at || new Date().toISOString(),
+    };
+  };
+
+  const normalizeGalleryItems = (items) => items.map(normalizeGalleryItem);
+
   const categories = [
     { id: 'all', name: 'All Photos', icon: PhotographIcon },
     { id: 'campus', name: 'Campus', icon: PhotographIcon },
@@ -61,7 +83,8 @@ const Gallery = () => {
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
-          setGalleryItems(data.data || []);
+          const galleryData = data.data?.gallery ?? data.data ?? data;
+          setGalleryItems(normalizeGalleryItems(Array.isArray(galleryData) ? galleryData : []));
         } else {
           setGalleryItems([]);
         }
@@ -82,31 +105,31 @@ const Gallery = () => {
     return [
       {
         id: 1,
-        title: "MVSR Engineering College - Campus Overview",
-        description: "Beautiful aerial view of the MVSR Engineering College campus showcasing the modern infrastructure and lush green environment.",
+        title: "MVSR Engineering College - Campus & Infrastructure",
+        description: "Explore the beautiful MVSR Engineering College campus with modern infrastructure, lush green environment, and state-of-the-art facilities established in 1981.",
         category: "campus",
-        tags: ["campus", "infrastructure", "aerial-view", "mvsr"],
+        tags: ["campus", "infrastructure", "mvsr", "college"],
         images: [
           {
-            url: "https://images.unsplash.com/photo-1562774053-701939374585?w=1200&h=800&fit=crop&auto=format",
-            caption: "MVSR Engineering College Main Building - A symbol of academic excellence since 1981",
-            alt: "MVSR College Main Campus Building",
+            url: "https://mvsrec.edu.in/images/home_slider/IMG_20251120_120402893_HDR_AE.jpg",
+            caption: "MVSR Engineering College Campus - A symbol of academic excellence since 1981",
+            alt: "MVSR College Campus",
             width: 1200,
             height: 800,
             size: 485760,
           },
           {
-            url: "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=1200&h=800&fit=crop&auto=format",
-            caption: "Modern Library Building with state-of-the-art facilities and digital resources",
-            alt: "MVSR College Library",
+            url: "https://mvsrec.edu.in/images/home_slider/2024-10-05_Dasara.jpg",
+            caption: "Dasara celebrations at MVSR Engineering College campus",
+            alt: "MVSR Dasara Celebrations",
             width: 1200,
             height: 800,
             size: 393216,
           },
           {
-            url: "https://images.unsplash.com/photo-1498243691581-b145c3f54a5a?w=1200&h=800&fit=crop&auto=format",
-            caption: "Advanced Computer Science Department Lab equipped with latest technology",
-            alt: "Computer Science Department Lab",
+            url: "https://mvsrec.edu.in/images/home_slider/2025-rangoli-1.jpg",
+            caption: "Rangoli competition at MVSR Engineering College",
+            alt: "MVSR Rangoli Competition",
             width: 1200,
             height: 800,
             size: 425984,
@@ -118,54 +141,42 @@ const Gallery = () => {
       },
       {
         id: 2,
-        title: "Independence Day Celebrations 2024",
-        description: "Patriotic fervor and enthusiasm marked the Independence Day celebrations at MVSR Engineering College.",
+        title: "Samavarthan 2026 - Annual Day Celebrations",
+        description: "Grand annual day celebrations Samavarthan 2026 showcasing the best of MVSR Engineering College with performances, awards, and memorable moments.",
         category: "events",
-        tags: ["independence-day", "celebrations", "patriotic", "national-festival", "2024"],
+        tags: ["samavarthan", "annual-day", "celebrations", "2026"],
         images: [
           {
-            url: "https://images.unsplash.com/photo-1551698638-6933a9f91e31?w=1200&h=800&fit=crop&auto=format",
-            caption: "Flag hoisting ceremony by the Principal during Independence Day 2024 celebrations",
-            alt: "Flag Hoisting Ceremony",
+            url: "https://mvsrec.edu.in/images/Events/SAMAVARTHAN2026.jpg",
+            caption: "Samavarthan 2026 - Annual Day celebrations at MVSR Engineering College",
+            alt: "Samavarthan 2026",
             width: 1200,
             height: 800,
             size: 368640,
           },
           {
-            url: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1200&h=800&fit=crop&auto=format",
-            caption: "Students performing cultural activities during Independence Day celebrations",
-            alt: "Cultural Performance",
+            url: "https://mvsrec.edu.in/images/Events/SAM-E8_1.jpg",
+            caption: "Cultural performances during Samavarthan celebrations",
+            alt: "Samavarthan Cultural Event",
             width: 1200,
             height: 800,
             size: 425984,
-          }
-        ],
-        likes: 678,
-        views: 3456,
-        createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-      },
-      {
-        id: 3,
-        title: "ATHLEMA Sports Fest 2024",
-        description: "The annual sports fest ATHLEMA 2024 brought together students from all departments for two days of intense competition.",
-        category: "events",
-        tags: ["athlema", "sports-fest", "competition", "sports", "2024", "august"],
-        images: [
-          {
-            url: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=1200&h=800&fit=crop&auto=format",
-            caption: "Inaugural ceremony of ATHLEMA 2024 with Principal and faculty members",
-            alt: "ATHLEMA 2024 Inauguration",
-            width: 1200,
-            height: 800,
-            size: 458752,
           },
           {
-            url: "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=1200&h=800&fit=crop&auto=format",
-            caption: "Cricket tournament finals between Computer Science and Mechanical Engineering",
-            alt: "Cricket Tournament Finals",
+            url: "https://mvsrec.edu.in/images/Events/SAM-E1.jpg",
+            caption: "Students showcasing their talent at Samavarthan",
+            alt: "Samavarthan Student Performance",
             width: 1200,
             height: 800,
             size: 393216,
+          },
+          {
+            url: "https://mvsrec.edu.in/images/Events/SAM-E2.jpg",
+            caption: "Award ceremony during Samavarthan 2026",
+            alt: "Samavarthan Awards",
+            width: 1200,
+            height: 800,
+            size: 409600,
           }
         ],
         likes: 892,
@@ -173,27 +184,71 @@ const Gallery = () => {
         createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
       },
       {
-        id: 4,
-        title: "Technical Workshops and Hackathons",
-        description: "Showcasing the technical excellence and innovation spirit of MVSR students through various workshops and hackathons.",
-        category: "technical",
-        tags: ["workshop", "hackathon", "technical", "innovation", "coding", "sih2025"],
+        id: 3,
+        title: "ATHLEMA 2025 - Annual Sports Fest",
+        description: "The annual sports fest ATHLEMA 2025 brought together students from all departments for exciting competitions in cricket, football, athletics, and more.",
+        category: "events",
+        tags: ["athlema", "sports-fest", "competition", "sports", "2025"],
         images: [
           {
-            url: "https://images.unsplash.com/photo-1517077304055-6e89abbf09b0?w=1200&h=800&fit=crop&auto=format",
-            caption: "IT HACK 1.0 - 24-hour hackathon organized by the Computer Science Department",
+            url: "https://mvsrec.edu.in/images/Events/ATHLEMA-25-COLLL.jpg",
+            caption: "ATHLEMA 2025 - Annual Sports Festival at MVSR Engineering College",
+            alt: "ATHLEMA 2025 Sports Fest",
+            width: 1200,
+            height: 800,
+            size: 458752,
+          },
+          {
+            url: "https://mvsrec.edu.in/images/Events/MBA-BOXING.jpg",
+            caption: "Boxing competition during ATHLEMA sports fest",
+            alt: "Boxing at ATHLEMA",
+            width: 1200,
+            height: 800,
+            size: 393216,
+          }
+        ],
+        likes: 678,
+        views: 3456,
+        createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      },
+      {
+        id: 4,
+        title: "Technical Workshops & Hackathons",
+        description: "Showcasing the technical excellence and innovation spirit of MVSR students through IT HACK, AI100K, MicroHackathon, and other coding events.",
+        category: "technical",
+        tags: ["hackathon", "workshop", "technical", "innovation", "coding"],
+        images: [
+          {
+            url: "https://mvsrec.edu.in/images/Events/IT-HACK-1.jpg",
+            caption: "IT HACK 1.0 - 24-hour hackathon organized by IT Department",
             alt: "IT HACK Hackathon",
             width: 1200,
             height: 800,
             size: 368640,
           },
           {
-            url: "https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&h=800&fit=crop&auto=format",
-            caption: "AI100K workshop on Artificial Intelligence and Machine Learning fundamentals",
+            url: "https://mvsrec.edu.in/images/Events/AI100K.jpg",
+            caption: "AI100K Workshop on Artificial Intelligence and Machine Learning",
             alt: "AI100K Workshop",
             width: 1200,
             height: 800,
             size: 425984,
+          },
+          {
+            url: "https://mvsrec.edu.in/images/Events/MicroHackathon.jpg",
+            caption: "Micro Hackathon - Quick problem solving coding challenge",
+            alt: "Micro Hackathon",
+            width: 1200,
+            height: 800,
+            size: 409600,
+          },
+          {
+            url: "https://mvsrec.edu.in/images/Events/CSE-HACK2.jpg",
+            caption: "CSE Department Hackathon - Students working on innovative solutions",
+            alt: "CSE Hackathon",
+            width: 1200,
+            height: 800,
+            size: 393216,
           }
         ],
         likes: 734,
@@ -202,26 +257,42 @@ const Gallery = () => {
       },
       {
         id: 5,
-        title: "Graduation Ceremony 2024",
-        description: "The proud moment of graduation ceremony 2024, celebrating the academic achievements of our graduating students.",
-        category: "academic",
-        tags: ["graduation", "convocation", "ceremony", "achievements", "2024", "success"],
+        title: "Department Technical Fests",
+        description: "Annual department-wise technical festivals showcasing innovations from CSE, ECE, EEE, Mechanical, Civil, and IT departments.",
+        category: "technical",
+        tags: ["tech-fest", "departments", "innovations", "projects"],
         images: [
           {
-            url: "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1200&h=800&fit=crop&auto=format",
-            caption: "Grand procession of graduating students during the convocation ceremony",
-            alt: "Graduation Procession",
+            url: "https://mvsrec.edu.in/images/Events/FEST-MAIN.jpg",
+            caption: "Main Technical Fest - Inter-departmental competitions and exhibitions",
+            alt: "Technical Fest Main Event",
             width: 1200,
             height: 800,
             size: 368640,
           },
           {
-            url: "https://images.unsplash.com/photo-1537832816519-689ad163238b?w=1200&h=800&fit=crop&auto=format",
-            caption: "Award ceremony for outstanding academic performers and gold medalists",
-            alt: "Awards Ceremony",
+            url: "https://mvsrec.edu.in/images/Events/fest-cse.jpg",
+            caption: "CSE Department Technical Fest - Software and AI projects",
+            alt: "CSE Tech Fest",
             width: 1200,
             height: 800,
             size: 409600,
+          },
+          {
+            url: "https://mvsrec.edu.in/images/Events/FEST-ECE.jpg",
+            caption: "ECE Department Technical Fest - Electronics and IoT innovations",
+            alt: "ECE Tech Fest",
+            width: 1200,
+            height: 800,
+            size: 393216,
+          },
+          {
+            url: "https://mvsrec.edu.in/images/Events/FEST-MECH.jpg",
+            caption: "Mechanical Department Fest - Robotics and design challenges",
+            alt: "Mech Tech Fest",
+            width: 1200,
+            height: 800,
+            size: 425984,
           }
         ],
         likes: 1123,
@@ -230,26 +301,34 @@ const Gallery = () => {
       },
       {
         id: 6,
-        title: "Cultural Fest - Techno Cultural Harmony",
-        description: "Annual cultural festival showcasing the diverse talents of MVSR students through music, dance, and drama.",
+        title: "Cultural Performances & Celebrations",
+        description: "Vibrant cultural events at MVSR including Samavarthan performances, Dasara celebrations, rangoli competitions, and more.",
         category: "cultural",
-        tags: ["cultural-fest", "music", "dance", "drama", "talent", "creativity"],
+        tags: ["cultural", "performances", "celebrations", "dance", "music"],
         images: [
           {
-            url: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=1200&h=800&fit=crop&auto=format",
-            caption: "Inaugural performance of the cultural fest with traditional dance",
-            alt: "Cultural Fest Inauguration",
+            url: "https://mvsrec.edu.in/images/Events/SAM-E4.jpg",
+            caption: "Cultural performance during Samavarthan celebrations",
+            alt: "Cultural Performance",
             width: 1200,
             height: 800,
             size: 425984,
           },
           {
-            url: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=1200&h=800&fit=crop&auto=format",
-            caption: "Music band performance by students during the cultural night",
-            alt: "Music Band Performance",
+            url: "https://mvsrec.edu.in/images/Events/SAM-E6.jpg",
+            caption: "Group dance performance by MVSR students",
+            alt: "Group Dance Performance",
             width: 1200,
             height: 800,
             size: 368640,
+          },
+          {
+            url: "https://mvsrec.edu.in/images/Events/SAM-E5.jpg",
+            caption: "Musical night during cultural fest",
+            alt: "Musical Night",
+            width: 1200,
+            height: 800,
+            size: 393216,
           }
         ],
         likes: 956,
@@ -258,26 +337,42 @@ const Gallery = () => {
       },
       {
         id: 7,
-        title: "Laboratories and Infrastructure",
-        description: "State-of-the-art laboratories and infrastructure facilities across all departments providing hands-on learning experience.",
-        category: "infrastructure",
-        tags: ["laboratories", "infrastructure", "facilities", "equipment", "research"],
+        title: "Placements & Industry Partnerships",
+        description: "MVSR's strong placement record with top companies like Cisco, IBM, SAP, and more recruiting from campus.",
+        category: "academic",
+        tags: ["placements", "industry", "recruitment", "career"],
         images: [
           {
-            url: "https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=1200&h=800&fit=crop&auto=format",
-            caption: "Advanced Electronics Laboratory with modern testing equipment",
-            alt: "Electronics Laboratory",
+            url: "https://mvsrec.edu.in/images/Events/PLC-CSE.jpg",
+            caption: "CSE Department Placement Drive - Students placed in top IT companies",
+            alt: "CSE Placements",
             width: 1200,
             height: 800,
             size: 368640,
           },
           {
-            url: "https://images.unsplash.com/photo-1517077304055-6e89abbf09b0?w=1200&h=800&fit=crop&auto=format",
-            caption: "Computer Laboratory with high-performance systems and software",
-            alt: "Computer Laboratory",
+            url: "https://mvsrec.edu.in/images/Events/PLC-ECE.jpg",
+            caption: "ECE Department Placements - Strong industry connections",
+            alt: "ECE Placements",
             width: 1200,
             height: 800,
             size: 425984,
+          },
+          {
+            url: "https://mvsrec.edu.in/images/Events/PLC-ITD-1.jpg",
+            caption: "IT Department Placement Activities - Industry readiness",
+            alt: "IT Placements",
+            width: 1200,
+            height: 800,
+            size: 393216,
+          },
+          {
+            url: "https://mvsrec.edu.in/images/home_slider/cisco-2025.jpg",
+            caption: "Cisco partnership with MVSR for student certifications and training",
+            alt: "Cisco Partnership",
+            width: 1200,
+            height: 800,
+            size: 409600,
           }
         ],
         likes: 523,
@@ -286,34 +381,115 @@ const Gallery = () => {
       },
       {
         id: 8,
-        title: "NCC and Social Activities",
-        description: "NCC cadets participating in various competitions and social service activities, showcasing discipline and leadership.",
+        title: "NCC & Social Service Activities",
+        description: "NCC cadets and NSS volunteers participating in national service, Republic Day celebrations, and community development activities.",
         category: "activities",
-        tags: ["ncc", "social-service", "discipline", "leadership", "national-service"],
+        tags: ["ncc", "nss", "social-service", "republic-day", "national-service"],
         images: [
           {
-            url: "https://images.unsplash.com/photo-1542831371-29b0f74f9713?w=1200&h=800&fit=crop&auto=format",
-            caption: "NCC cadets during the Republic Day parade celebration",
-            alt: "NCC Republic Day Parade",
+            url: "https://mvsrec.edu.in/images/Events/NCC-YEP.jpg",
+            caption: "NCC Youth Exchange Programme - Building leadership and discipline",
+            alt: "NCC Youth Programme",
             width: 1200,
             height: 800,
             size: 393216,
           },
           {
-            url: "https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1200&h=800&fit=crop&auto=format",
-            caption: "Social service activity - Tree plantation drive by NCC cadets",
-            alt: "Tree Plantation Drive",
+            url: "https://mvsrec.edu.in/images/Events/NCC-FLYING_OFFICER.jpg",
+            caption: "NCC Flying Officer commissioning ceremony at MVSR",
+            alt: "NCC Flying Officer",
             width: 1200,
             height: 800,
             size: 368640,
+          },
+          {
+            url: "https://mvsrec.edu.in/images/2025-01-26-rd.jpg",
+            caption: "Republic Day celebrations 2025 - Flag hoisting ceremony",
+            alt: "Republic Day 2025",
+            width: 1200,
+            height: 800,
+            size: 425984,
+          },
+          {
+            url: "https://mvsrec.edu.in/images/home_slider/ncc.jpg",
+            caption: "NCC cadets during annual camp and training activities",
+            alt: "NCC Camp",
+            width: 1200,
+            height: 800,
+            size: 409600,
           }
         ],
         likes: 678,
         views: 3456,
         createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+      },
+      {
+        id: 9,
+        title: "Alumni Meet & Networking",
+        description: "Alumni gatherings, meets, and networking events bringing together MVSR graduates from across the globe.",
+        category: "events",
+        tags: ["alumni-meet", "networking", "graduates", "reunion"],
+        images: [
+          {
+            url: "https://mvsrec.edu.in/images/Events/ALUMNI-COLL_1.jpg",
+            caption: "Alumni Collective Meet - Reconnecting with MVSR family",
+            alt: "Alumni Collective Meet",
+            width: 1200,
+            height: 800,
+            size: 425984,
+          },
+          {
+            url: "https://mvsrec.edu.in/images/Alumni/Nagaraju-alumni.jpg",
+            caption: "Distinguished alumni visit and interaction with students",
+            alt: "Alumni Visit",
+            width: 1200,
+            height: 800,
+            size: 368640,
+          }
+        ],
+        likes: 845,
+        views: 4123,
+        createdAt: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000),
+      },
+      {
+        id: 10,
+        title: "Science Day & National Events",
+        description: "Celebrations of National Science Day, Teachers Day, and other important national events at MVSR Engineering College.",
+        category: "academic",
+        tags: ["science-day", "teachers-day", "national-events", "celebrations"],
+        images: [
+          {
+            url: "https://mvsrec.edu.in/images/Events/SICENCEDAY.jpg",
+            caption: "National Science Day celebrations with experiments and exhibitions",
+            alt: "Science Day",
+            width: 1200,
+            height: 800,
+            size: 393216,
+          },
+          {
+            url: "https://mvsrec.edu.in/images/home_slider/2025-02-28_nsd.jpg",
+            caption: "National Science Day 2025 - Student innovations on display",
+            alt: "National Science Day 2025",
+            width: 1200,
+            height: 800,
+            size: 425984,
+          },
+          {
+            url: "https://mvsrec.edu.in/images/Events/TeachersDay/Civil/2.jpg",
+            caption: "Teachers Day celebrations - Honoring our mentors",
+            alt: "Teachers Day",
+            width: 1200,
+            height: 800,
+            size: 368640,
+          }
+        ],
+        likes: 567,
+        views: 2345,
+        createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
       }
     ];
   };
+
 
   const handleLike = async (itemId) => {
     try {
@@ -348,14 +524,13 @@ const Gallery = () => {
         toast.success('Added to likes');
       }
       
-      setLikedItems(newLikedItems);
-      
-      // Update the item in the list
+      const liked = likedItems.has(itemId);
       setGalleryItems(prev => prev.map(item => 
         item.id === itemId 
-          ? { ...item, likes: likedItems.has(itemId) ? item.likes - 1 : item.likes + 1 }
+          ? { ...item, likes: typeof item.likes === 'number' ? item.likes + (liked ? -1 : 1) : (liked ? 0 : 1) }
           : item
       ));
+      setLikedItems(newLikedItems);
     } catch (error) {
       console.error('Error toggling like:', error);
       // Mock success
@@ -372,8 +547,9 @@ const Gallery = () => {
   };
 
   const openLightbox = (item, imageIndex = 0) => {
-    setSelectedItem(item);
-    setCurrentImageIndex(imageIndex);
+    const normalizedItem = normalizeGalleryItem(item);
+    setSelectedItem(normalizedItem);
+    setCurrentImageIndex(imageIndex >= normalizedItem.images.length ? 0 : imageIndex);
   };
 
   const closeLightbox = () => {
@@ -396,9 +572,12 @@ const Gallery = () => {
   };
 
   const filteredItems = galleryItems.filter(item => {
-    const matchesSearch = item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
+    const title = item.title ? String(item.title).toLowerCase() : '';
+    const description = item.description ? String(item.description).toLowerCase() : '';
+    const tags = Array.isArray(item.tags) ? item.tags : [];
+    const matchesSearch = title.includes(searchTerm.toLowerCase()) ||
+                         description.includes(searchTerm.toLowerCase()) ||
+                         tags.some((tag) => String(tag).toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
@@ -483,8 +662,8 @@ const Gallery = () => {
                 {/* Main Image */}
                 <div className="relative group cursor-pointer" onClick={() => openLightbox(item, 0)}>
                   <img
-                    src={item.images[0]?.url}
-                    alt={item.images[0]?.alt}
+                    src={item.images[0]?.url || DEFAULT_GALLERY_IMAGE.url}
+                    alt={item.images[0]?.alt || DEFAULT_GALLERY_IMAGE.alt}
                     className="w-full h-64 object-cover"
                   />
                   <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all duration-300 flex items-center justify-center">
@@ -566,7 +745,7 @@ const Gallery = () => {
             </button>
 
             {/* Navigation */}
-            {selectedItem.images.length > 1 && (
+            {selectedItem.images?.length > 1 && (
               <>
                 <button
                   onClick={() => navigateImage('prev')}
@@ -586,14 +765,14 @@ const Gallery = () => {
             {/* Image */}
             <div className="text-center">
               <img
-                src={selectedItem.images[currentImageIndex]?.url}
-                alt={selectedItem.images[currentImageIndex]?.alt}
+                src={selectedItem.images[currentImageIndex]?.url || DEFAULT_GALLERY_IMAGE.url}
+                alt={selectedItem.images[currentImageIndex]?.alt || DEFAULT_GALLERY_IMAGE.alt}
                 className="max-w-full max-h-screen object-contain mx-auto"
               />
               <p className="text-white mt-4 text-lg">
-                {selectedItem.images[currentImageIndex]?.caption}
+                {selectedItem.images[currentImageIndex]?.caption || DEFAULT_GALLERY_IMAGE.caption}
               </p>
-              {selectedItem.images.length > 1 && (
+              {selectedItem.images?.length > 1 && (
                 <p className="text-gray-400 mt-2">
                   {currentImageIndex + 1} / {selectedItem.images.length}
                 </p>

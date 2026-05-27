@@ -197,8 +197,25 @@ func (jc *JobController) GetJob(c *gin.Context) {
 	})
 }
 
-// CreateJob handles creating a new job (admin only)
+// CreateJob handles creating a new job
 func (jc *JobController) CreateJob(c *gin.Context) {
+	// Get user ID from context
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "User not authenticated",
+		})
+		return
+	}
+
+	// Determine role — admin posts are auto-approved, others need approval
+	role, _ := c.Get("role")
+	isActive := false
+	if role == "admin" {
+		isActive = true
+	}
+
 	var job struct {
 		Title              string   `json:"title" binding:"required"`
 		Description        string   `json:"description" binding:"required"`
@@ -230,13 +247,13 @@ func (jc *JobController) CreateJob(c *gin.Context) {
 	query := `
 		INSERT INTO jobs (title, description, company, location, salary_range, 
 		              job_type, experience_required, skills_required, is_active, 
-		              created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, true, NOW(), NOW())
+		              created_at, updated_at, posted_by)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?)
 	`
 
 	result, err := jc.db.Exec(query,
 		job.Title, job.Description, job.Company, job.Location,
-		job.SalaryRange, job.JobType, job.ExperienceRequired, skillsJSON,
+		job.SalaryRange, job.JobType, job.ExperienceRequired, skillsJSON, isActive, userID,
 	)
 
 	if err != nil {
@@ -250,16 +267,21 @@ func (jc *JobController) CreateJob(c *gin.Context) {
 
 	jobID, _ := result.LastInsertId()
 
+	message := "Job created successfully"
+	if !isActive {
+		message = "Job submitted successfully. It will be visible after admin approval."
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
-		"message": "Job created successfully",
+		"message": message,
 		"data": gin.H{
 			"id": jobID,
 		},
 	})
 }
 
-// UpdateJob handles updating a job (admin only)
+// UpdateJob handles updating a job
 func (jc *JobController) UpdateJob(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -268,6 +290,30 @@ func (jc *JobController) UpdateJob(c *gin.Context) {
 			"message": "Invalid job ID",
 		})
 		return
+	}
+
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "User not authenticated",
+		})
+		return
+	}
+	role, _ := c.Get("role")
+
+	// Check ownership if not admin
+	if role != "admin" {
+		var postedBy sql.NullInt64
+		err = jc.db.QueryRow("SELECT posted_by FROM jobs WHERE id = ?", id).Scan(&postedBy)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Job not found"})
+			return
+		}
+		if !postedBy.Valid || int(postedBy.Int64) != userID.(int) {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "You don't have permission to edit this job"})
+			return
+		}
 	}
 
 	var job struct {
@@ -325,7 +371,7 @@ func (jc *JobController) UpdateJob(c *gin.Context) {
 	})
 }
 
-// DeleteJob handles deleting a job (admin only)
+// DeleteJob handles deleting a job
 func (jc *JobController) DeleteJob(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -334,6 +380,30 @@ func (jc *JobController) DeleteJob(c *gin.Context) {
 			"message": "Invalid job ID",
 		})
 		return
+	}
+
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "User not authenticated",
+		})
+		return
+	}
+	role, _ := c.Get("role")
+
+	// Check ownership if not admin
+	if role != "admin" {
+		var postedBy sql.NullInt64
+		err = jc.db.QueryRow("SELECT posted_by FROM jobs WHERE id = ?", id).Scan(&postedBy)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Job not found"})
+			return
+		}
+		if !postedBy.Valid || int(postedBy.Int64) != userID.(int) {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "You don't have permission to delete this job"})
+			return
+		}
 	}
 
 	// Soft delete by setting is_active to false
@@ -599,4 +669,95 @@ func (jc *JobController) getUniqueLocations() ([]string, error) {
 		locations = append(locations, location)
 	}
 	return locations, nil
+}
+
+// GetPendingJobs returns jobs with is_active = false for admin review
+func (jc *JobController) GetPendingJobs(c *gin.Context) {
+	query := `
+		SELECT j.id, j.title, j.description, j.company, j.location, j.salary_range,
+		       j.job_type, j.experience_required, j.skills_required, j.is_active,
+		       j.created_at, j.updated_at, COALESCE(j.posted_by, 0),
+		       COALESCE(u.first_name, ''), COALESCE(u.last_name, ''), COALESCE(u.email, '')
+		FROM jobs j
+		LEFT JOIN users u ON j.posted_by = u.id
+		WHERE j.is_active = false
+		ORDER BY j.created_at DESC
+	`
+
+	rows, err := jc.db.Query(query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch pending jobs", "error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var jobs []gin.H
+	for rows.Next() {
+		var id, postedBy int
+		var title, description, company, location, salaryRange, jobType, experienceRequired, skillsRequired, createdAt, updatedAt string
+		var isActive bool
+		var posterFirst, posterLast, posterEmail string
+		err := rows.Scan(&id, &title, &description, &company, &location, &salaryRange,
+			&jobType, &experienceRequired, &skillsRequired, &isActive, &createdAt, &updatedAt,
+			&postedBy, &posterFirst, &posterLast, &posterEmail)
+		if err != nil {
+			continue
+		}
+		jobs = append(jobs, gin.H{
+			"id": id, "title": title, "description": description, "company": company,
+			"location": location, "salary_range": salaryRange, "job_type": jobType,
+			"experience_required": experienceRequired, "skills_required": skillsRequired,
+			"is_active": isActive, "created_at": createdAt, "updated_at": updatedAt,
+			"posted_by": postedBy,
+			"poster": gin.H{"firstName": posterFirst, "lastName": posterLast, "email": posterEmail},
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": jobs})
+}
+
+// ApproveJob sets a job's is_active to true
+func (jc *JobController) ApproveJob(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid job ID"})
+		return
+	}
+
+	result, err := jc.db.Exec("UPDATE jobs SET is_active = true, updated_at = NOW() WHERE id = ?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to approve job", "error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Job not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Job approved successfully"})
+}
+
+// RejectJob deletes a pending job posting
+func (jc *JobController) RejectJob(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid job ID"})
+		return
+	}
+
+	result, err := jc.db.Exec("DELETE FROM jobs WHERE id = ? AND is_active = false", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to reject job", "error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Job not found or already active"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Job rejected and removed"})
 }

@@ -198,7 +198,7 @@ const HelpDeskEnhanced = () => {
     setLoading(true);
     
     try {
-      const endpoint = '/api/helpdesk/submit';
+      const endpoint = '/api/v1/helpdesk/submit';
       const payload = {
         ...formData,
         service: selectedService,
@@ -240,12 +240,12 @@ const HelpDeskEnhanced = () => {
   };
 
   const colorClasses = {
-    blue: 'bg-blue-50 border-blue-200 text-blue-800',
-    green: 'bg-green-50 border-green-200 text-green-800',
-    purple: 'bg-purple-50 border-purple-200 text-purple-800',
-    orange: 'bg-orange-50 border-orange-200 text-orange-800',
-    indigo: 'bg-indigo-50 border-indigo-200 text-indigo-800',
-    red: 'bg-red-50 border-red-200 text-red-800'
+    blue: 'bg-blue-600 border border-blue-700 text-white',
+    green: 'bg-green-600 border border-green-700 text-white',
+    purple: 'bg-purple-600 border border-purple-700 text-white',
+    orange: 'bg-orange-600 border border-orange-700 text-white',
+    indigo: 'bg-indigo-600 border border-indigo-700 text-white',
+    red: 'bg-red-600 border border-red-700 text-white'
   };
 
   const renderForm = () => {
@@ -597,13 +597,13 @@ const HelpDeskEnhanced = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-mvsr-50 to-mvsr-100 py-12">
+    <div className="min-h-screen bg-gradient-to-br from-mvsr-100 to-mvsr-200 py-12">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-white mb-4">
+          <h1 className="text-4xl font-bold text-mvsr-900 mb-4">
             Alumni Help Desk
           </h1>
-          <p className="text-xl text-mvsr-100">
+          <p className="text-xl text-mvsr-700">
             Connect with the institution and access various services
           </p>
         </div>
@@ -614,7 +614,7 @@ const HelpDeskEnhanced = () => {
               <button
                 key={service.id}
                 onClick={() => handleServiceSelect(service.id)}
-                className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-all duration-300 text-left group"
+                className="bg-white border border-gray-200 rounded-xl shadow-lg p-6 hover:shadow-xl transition-all duration-300 text-left group"
               >
                 <div className="flex flex-col items-center space-y-4">
                   <div className={`p-4 rounded-full group-hover:scale-110 transition-transform ${colorClasses[service.color]}`}>

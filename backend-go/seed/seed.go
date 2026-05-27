@@ -24,11 +24,11 @@ type RealEvent struct {
 
 // Real news data based on actual college announcements
 type RealNews struct {
-	Title     string `json:"title"`
-	Content   string `json:"content"`
-	Author    string `json:"author"`
-	Category  string `json:"category"`
-	ImageURL  string `json:"image_url"`
+	Title    string `json:"title"`
+	Content  string `json:"content"`
+	Author   string `json:"author"`
+	Category string `json:"category"`
+	ImageURL string `json:"image_url"`
 }
 
 // Real gallery data based on actual college events
@@ -43,7 +43,7 @@ type RealGallery struct {
 func getRealEvents() []RealEvent {
 	return []RealEvent{
 		{
-			Title:       "MVSR Annual Alumni Meet 2024 - Reconnect & Celebrate",
+			Title: "MVSR Annual Alumni Meet 2024 - Reconnect & Celebrate",
 			Description: `Join us for the grand MVSR Alumni Meet 2024! This year's event promises to be bigger and better with over 1000 expected attendees from across the globe. 
 
 Event Highlights:
@@ -62,15 +62,15 @@ Registration Details:
 • Family packages available
 
 Don't miss this opportunity to reconnect with old friends and build new connections!`,
-			Location:    "MVSR Engineering College, Main Auditorium & Campus Grounds",
-			Organizer:   "MVSR Alumni Association",
-			Category:    "Reunion",
-			ImageURL:    "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000",
-			EventDate:   time.Date(2024, 12, 15, 0, 0, 0, 0, time.UTC),
-			EventTime:   "17:00",
+			Location:  "MVSR Engineering College, Main Auditorium & Campus Grounds",
+			Organizer: "MVSR Alumni Association",
+			Category:  "Reunion",
+			ImageURL:  "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000",
+			EventDate: time.Date(2024, 12, 15, 0, 0, 0, 0, time.UTC),
+			EventTime: "17:00",
 		},
 		{
-			Title:       "AI & Machine Learning Summit 2024 - Industry Leaders Meet",
+			Title: "AI & Machine Learning Summit 2024 - Industry Leaders Meet",
 			Description: `MVSR Engineering College presents the AI & ML Summit 2024, featuring industry leaders from Microsoft, Google, Amazon, and Tesla. This summit will showcase the latest advancements in artificial intelligence and machine learning.
 
 Summit Agenda:
@@ -91,15 +91,15 @@ Who Should Attend:
 • Tech enthusiasts and developers
 
 Registration: Free for MVSR students, ₹200 for external participants`,
-			Location:    "MVSR Engineering College, Seminar Hall Complex",
-			Organizer:   "Computer Science & Engineering Department",
-			Category:    "Technology",
-			ImageURL:    "https://images.unsplash.com/photo-1677442136019-21780ecad995?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000",
-			EventDate:   time.Date(2024, 11, 20, 0, 0, 0, 0, time.UTC),
-			EventTime:   "09:00",
+			Location:  "MVSR Engineering College, Seminar Hall Complex",
+			Organizer: "Computer Science & Engineering Department",
+			Category:  "Technology",
+			ImageURL:  "https://images.unsplash.com/photo-1677442136019-21780ecad995?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000",
+			EventDate: time.Date(2024, 11, 20, 0, 0, 0, 0, time.UTC),
+			EventTime: "09:00",
 		},
 		{
-			Title:       "Mega Job Fair 2024 - 100+ Companies Hiring",
+			Title: "Mega Job Fair 2024 - 100+ Companies Hiring",
 			Description: `MVSR Placement Cell presents the biggest job fair of 2024 with over 100 top companies participating! This is your chance to land your dream job with leading multinational corporations.
 
 Participating Companies:
@@ -125,15 +125,15 @@ What to Bring:
 • Formal attire mandatory
 
 Expected Opportunities: 2000+ job openings, 500+ internship positions`,
-			Location:    "MVSR Engineering College, Multiple Venues Across Campus",
-			Organizer:   "Training & Placement Cell",
-			Category:    "Career",
-			ImageURL:    "https://images.unsplash.com/photo-1515187029135-18ee286d815b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000",
-			EventDate:   time.Date(2024, 10, 10, 0, 0, 0, 0, time.UTC),
-			EventTime:   "08:00",
+			Location:  "MVSR Engineering College, Multiple Venues Across Campus",
+			Organizer: "Training & Placement Cell",
+			Category:  "Career",
+			ImageURL:  "https://images.unsplash.com/photo-1515187029135-18ee286d815b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000",
+			EventDate: time.Date(2024, 10, 10, 0, 0, 0, 0, time.UTC),
+			EventTime: "08:00",
 		},
 		{
-			Title:       "Entrepreneurship Workshop - From Idea to IPO",
+			Title: "Entrepreneurship Workshop - From Idea to IPO",
 			Description: `Join successful MVSR alumni entrepreneurs for an intensive workshop on building successful startups. Learn from founders who have raised millions in funding and built companies from scratch.
 
 Workshop Modules:
@@ -160,15 +160,15 @@ Workshop Benefits:
 • Follow-up support for 6 months
 
 Limited to 100 participants. Register early to secure your spot!`,
-			Location:    "MVSR Engineering College, Entrepreneurship Development Cell",
-			Organizer:   "Entrepreneurship Development Cell",
-			Category:    "Workshop",
-			ImageURL:    "https://images.unsplash.com/photo-1556761175-b413da4baf72?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000",
-			EventDate:   time.Date(2024, 9, 25, 0, 0, 0, 0, time.UTC),
-			EventTime:   "09:30",
+			Location:  "MVSR Engineering College, Entrepreneurship Development Cell",
+			Organizer: "Entrepreneurship Development Cell",
+			Category:  "Workshop",
+			ImageURL:  "https://images.unsplash.com/photo-1556761175-b413da4baf72?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000",
+			EventDate: time.Date(2024, 9, 25, 0, 0, 0, 0, time.UTC),
+			EventTime: "09:30",
 		},
 		{
-			Title:       "TechnoCult 2024 - Annual Cultural & Technical Festival",
+			Title: "TechnoCult 2024 - Annual Cultural & Technical Festival",
 			Description: `MVSR's biggest festival is back! TechnoCult 2024 combines cutting-edge technology showcases with vibrant cultural performances. This 3-day extravaganza attracts participants from 50+ colleges across India.
 
 Technical Events:
@@ -200,12 +200,12 @@ Special Attractions:
 Prize Pool: ₹10 Lakhs across all events
 Expected Attendance: 5000+ participants
 Guest Performances: Bollywood artists and stand-up comedians`,
-			Location:    "MVSR Engineering College, Entire Campus",
-			Organizer:   "Student Cultural Committee",
-			Category:    "Cultural",
-			ImageURL:    "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000",
-			EventDate:   time.Date(2024, 8, 15, 0, 0, 0, 0, time.UTC),
-			EventTime:   "10:00",
+			Location:  "MVSR Engineering College, Entire Campus",
+			Organizer: "Student Cultural Committee",
+			Category:  "Cultural",
+			ImageURL:  "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000",
+			EventDate: time.Date(2024, 8, 15, 0, 0, 0, 0, time.UTC),
+			EventTime: "10:00",
 		},
 	}
 }
@@ -510,7 +510,7 @@ func getRealGallery() []RealGallery {
 
 func main() {
 	// Connect to MySQL database
-	dsn := "root:root@tcp(localhost:3306)/mvsr_alumni?parseTime=true"
+	dsn := "root:Shiva@56@tcp(localhost:3306)/mvsr_alumni?parseTime=true"
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
