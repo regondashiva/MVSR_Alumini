@@ -64,9 +64,23 @@ func main() {
 	galleryController := controllers.NewGalleryController(cfg)
 	facultyController := controllers.NewFacultyController()
 	helpdeskController := controllers.NewHelpdeskController()
+	mentorshipController := controllers.NewMentorshipController()
 
 	// Setup routes (pass config for middleware that needs it)
-	routes.SetupRoutes(router, cfg, authController, userController, alumniController, eventController, jobController, newsController, galleryController, facultyController, helpdeskController)
+	routes.SetupRoutes(
+		router,
+		cfg,
+		authController,
+		userController,
+		alumniController,
+		eventController,
+		jobController,
+		newsController,
+		galleryController,
+		facultyController,
+		helpdeskController,
+		mentorshipController,
+	)
 
 	// Start server
 	port := cfg.Port

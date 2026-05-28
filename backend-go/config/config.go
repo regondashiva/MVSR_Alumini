@@ -108,6 +108,47 @@ func ConnectDatabase(cfg *Config) error {
 	DB.SetConnMaxLifetime(5 * time.Minute)
 
 	log.Println("Connected to MySQL successfully")
+
+	// Ensure user_connections table exists
+	userConnectionsTable := `
+	CREATE TABLE IF NOT EXISTS user_connections (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		requester_id INT NOT NULL,
+		addressee_id INT NOT NULL,
+		status ENUM('pending', 'accepted', 'rejected') DEFAULT 'pending',
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (addressee_id) REFERENCES users(id) ON DELETE CASCADE,
+		UNIQUE KEY unique_connection (requester_id, addressee_id)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
+
+	if _, err := DB.Exec(userConnectionsTable); err != nil {
+		log.Println("Warning: Failed to create user_connections table:", err)
+	} else {
+		log.Println("Database: user_connections table is verified/created")
+	}
+
+	// Ensure mentorship_requests table exists
+	mentorshipRequestsTable := `
+	CREATE TABLE IF NOT EXISTS mentorship_requests (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		student_id INT NOT NULL,
+		mentor_id INT NOT NULL,
+		status ENUM('pending', 'accepted', 'rejected') DEFAULT 'pending',
+		message TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (mentor_id) REFERENCES users(id) ON DELETE CASCADE
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
+
+	if _, err := DB.Exec(mentorshipRequestsTable); err != nil {
+		log.Println("Warning: Failed to create mentorship_requests table:", err)
+	} else {
+		log.Println("Database: mentorship_requests table is verified/created")
+	}
+
 	return nil
 }
 

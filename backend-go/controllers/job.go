@@ -560,7 +560,56 @@ func (jc *JobController) GetJobApplications(c *gin.Context) {
 		return
 	}
 
-	jobID, err := strconv.Atoi(c.Param("id"))
+	jobIDParam := c.Param("id")
+	if jobIDParam == "" {
+		// Fetch job applications submitted BY the user
+		query := `
+			SELECT ja.id, ja.application_date, ja.status, 
+			       j.title, j.company, j.location
+			FROM job_applications ja
+			JOIN jobs j ON ja.job_id = j.id
+			WHERE ja.user_id = ?
+			ORDER BY ja.application_date DESC
+		`
+		rows, err := jc.db.Query(query, userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "Failed to fetch applications",
+				"error":   err.Error(),
+			})
+			return
+		}
+		defer rows.Close()
+
+		var applications []gin.H
+		for rows.Next() {
+			var id int
+			var applicationDate, status, title, company, location string
+			err := rows.Scan(&id, &applicationDate, &status, &title, &company, &location)
+			if err != nil {
+				continue
+			}
+			applications = append(applications, gin.H{
+				"id":               id,
+				"application_date": applicationDate,
+				"status":           status,
+				"job": gin.H{
+					"title":    title,
+					"company":  company,
+					"location": location,
+				},
+			})
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"data":    applications,
+		})
+		return
+	}
+
+	jobID, err := strconv.Atoi(jobIDParam)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,

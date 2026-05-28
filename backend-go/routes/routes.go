@@ -21,6 +21,7 @@ func SetupRoutes(
 	galleryController *controllers.GalleryController,
 	facultyController *controllers.FacultyController,
 	helpdeskController *controllers.HelpdeskController,
+	mentorshipController *controllers.MentorshipController,
 ) {
 	// Health check
 	router.GET("/api/health", func(c *gin.Context) {
@@ -79,6 +80,9 @@ func SetupRoutes(
 				user.POST("/logout-all", authController.LogoutAll) // revoke all devices
 			}
 
+			// Helpdesk (user's own tickets)
+			protected.GET("/helpdesk/my-tickets", helpdeskController.GetUserTickets)
+
 			// Events
 			events := protected.Group("/events")
 			{
@@ -135,7 +139,15 @@ func SetupRoutes(
 				alumni.POST("/:id/connect", alumniController.ConnectWithAlumni)
 				alumni.POST("/:id/disconnect", alumniController.DisconnectFromAlumni)
 				alumni.GET("/connections", alumniController.GetConnections)
+				alumni.PUT("/connections/:id", alumniController.RespondToConnection)
 				alumni.GET("/stats", alumniController.GetAlumniStats)
+			}
+
+			// Mentorship
+			mentorship := protected.Group("/mentorship")
+			{
+				mentorship.POST("/requests", mentorshipController.CreateMentorshipRequest)
+				mentorship.GET("/requests", mentorshipController.GetMentorshipRequests)
 			}
 
 			// Faculty
@@ -208,5 +220,13 @@ func SetupRoutes(
 		legacy.GET("/gallery", galleryController.GetGallery)
 		legacy.GET("/gallery/:id", galleryController.GetGalleryItem)
 		legacy.POST("/helpdesk/submit", helpdeskController.SubmitTicket)
+
+		// Legacy Connections and Mentorship (authenticated)
+		legacyAuth := legacy.Group("")
+		legacyAuth.Use(middleware.Auth(cfg))
+		{
+			legacyAuth.POST("/connections/request", alumniController.ConnectWithAlumni)
+			legacyAuth.POST("/mentorship/request", mentorshipController.CreateMentorshipRequest)
+		}
 	}
 }

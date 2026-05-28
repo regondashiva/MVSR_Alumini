@@ -199,12 +199,33 @@ const HelpDeskEnhanced = () => {
     
     try {
       const endpoint = '/api/v1/helpdesk/submit';
+      // Construct service-specific details object
+      const details = {};
+      if (selectedService === 'campus-visit') {
+        details.visitDate = formData.visitDate;
+        details.visitPurpose = formData.visitPurpose;
+      } else if (selectedService === 'mentor') {
+        details.mentorshipAreas = formData.mentorshipAreas;
+      } else if (selectedService === 'volunteer') {
+        details.volunteerAreas = formData.volunteerAreas;
+      } else if (selectedService === 'transcript') {
+        details.transcriptRequest = formData.transcriptRequest;
+      } else if (selectedService === 'recruit') {
+        details.company = formData.company;
+        details.jobRole = formData.jobRole;
+        details.jobDescription = formData.jobDescription;
+        details.requiredSkills = formData.requiredSkills;
+        details.contactDetails = formData.contactDetails;
+      }
+
       const payload = {
-        ...formData,
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        message: formData.message,
         service: selectedService,
         userId: user?.id,
-        userName: user?.name,
-        userEmail: user?.email
+        details: details
       };
 
       const response = await fetch(`${endpoint}`, {

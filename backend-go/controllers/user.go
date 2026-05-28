@@ -29,18 +29,32 @@ func NewUserController(cfg *config.Config) *UserController {
 
 const userSelectFields = `
 	id, first_name, last_name, email, password, roll_number, 
-	country_code, phone_number, address, college, department, 
-	passout_year, role, is_verified, is_active, approval_status, approved_by, approved_at, approval_notes, profile_bio, 
-	profile_company, profile_role, profile_experience_years, profile_industry, 
-	profile_location, profile_website, profile_skills, profile_achievements, 
-	profile_interests, profile_image, social_linkedin, social_github, 
-	social_twitter, social_facebook, preferences_email_notifications, 
-	preferences_push_notifications, preferences_show_email, 
-	preferences_show_phone, preferences_show_profile, 
-	preferences_allow_messages, preferences_show_connections, 
-	preferences_theme, preferences_language, preferences_timezone, 
+	COALESCE(country_code, '+91'), COALESCE(phone_number, ''), 
+	COALESCE(address, ''), COALESCE(college, 'mvsr'), COALESCE(department, ''), 
+	COALESCE(CAST(passout_year AS CHAR), ''), role, 
+	COALESCE(is_verified, false), COALESCE(is_active, true), 
+	approval_status, approved_by, approved_at, approval_notes, 
+	COALESCE(profile_bio, ''), COALESCE(profile_company, ''), 
+	COALESCE(profile_role, ''), COALESCE(profile_experience_years, 0), 
+	COALESCE(profile_industry, ''), COALESCE(profile_location, ''), 
+	COALESCE(profile_website, ''), COALESCE(profile_skills, '[]'), 
+	COALESCE(profile_achievements, '[]'), COALESCE(profile_interests, '[]'), 
+	COALESCE(profile_image, ''), COALESCE(social_linkedin, ''), 
+	COALESCE(social_github, ''), COALESCE(social_twitter, ''), 
+	COALESCE(social_facebook, ''), 
+	COALESCE(preferences_email_notifications, true), 
+	COALESCE(preferences_push_notifications, true), 
+	COALESCE(preferences_show_email, true), 
+	COALESCE(preferences_show_phone, true), 
+	COALESCE(preferences_show_profile, true), 
+	COALESCE(preferences_allow_messages, true), 
+	COALESCE(preferences_show_connections, true), 
+	COALESCE(preferences_theme, 'light'), 
+	COALESCE(preferences_language, 'en'), 
+	COALESCE(preferences_timezone, 'Asia/Kolkata'), 
 	created_at, updated_at, last_login
 `
+
 
 func scanUser(s interface {
 	Scan(dest ...interface{}) error
@@ -348,7 +362,15 @@ func (uc *UserController) ApproveRegistration(c *gin.Context) {
 		return
 	}
 
-	adminIDInt := int(adminID.(float64))
+	var adminIDInt int
+	if val, ok := adminID.(int); ok {
+		adminIDInt = val
+	} else if val, ok := adminID.(float64); ok {
+		adminIDInt = int(val)
+	} else {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Invalid admin ID type"})
+		return
+	}
 
 	// Parse request body for approval notes
 	var req struct {
@@ -416,7 +438,15 @@ func (uc *UserController) RejectRegistration(c *gin.Context) {
 		return
 	}
 
-	adminIDInt := int(adminID.(float64))
+	var adminIDInt int
+	if val, ok := adminID.(int); ok {
+		adminIDInt = val
+	} else if val, ok := adminID.(float64); ok {
+		adminIDInt = int(val)
+	} else {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Invalid admin ID type"})
+		return
+	}
 
 	// Parse request body for rejection reason
 	var req struct {

@@ -8,6 +8,7 @@ import {
 } from '@heroicons/react/outline';
 import toast from 'react-hot-toast';
 import RoleBadge from './RoleBadge';
+import API_CONFIG from '../config/api';
 
 const ApprovalNotifications = ({ onApprovalUpdate }) => {
   const [notifications, setNotifications] = useState([]);
@@ -26,7 +27,7 @@ const ApprovalNotifications = ({ onApprovalUpdate }) => {
   const fetchNotifications = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('/api/v1/admin/pending-approvals', {
+      const response = await fetch(API_CONFIG.getUrl('/api/v1/admin/pending-approvals'), {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -48,7 +49,7 @@ const ApprovalNotifications = ({ onApprovalUpdate }) => {
     setProcessingId(userId);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/v1/admin/approve-user/${userId}`, {
+      const response = await fetch(API_CONFIG.getUrl(`/api/v1/admin/approve-user/${userId}`), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -81,7 +82,7 @@ const ApprovalNotifications = ({ onApprovalUpdate }) => {
     setProcessingId(userId);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/v1/admin/reject-user/${userId}`, {
+      const response = await fetch(API_CONFIG.getUrl(`/api/v1/admin/reject-user/${userId}`), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

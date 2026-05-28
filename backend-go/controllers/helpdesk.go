@@ -211,3 +211,66 @@ func (hc *HelpdeskController) ResolveTicket(c *gin.Context) {
 		"message": "Ticket resolved successfully",
 	})
 }
+
+// GetUserTickets handles fetching helpdesk tickets submitted by the logged-in user
+func (hc *HelpdeskController) GetUserTickets(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Unauthorized access",
+		})
+		return
+	}
+
+	query := `
+		SELECT id, name, email, COALESCE(phone, ''), service,
+		       COALESCE(message, ''), COALESCE(details, '{}'), status,
+		       COALESCE(admin_remarks, ''), created_at, updated_at
+		FROM helpdesk_tickets
+		WHERE user_id = ?
+		ORDER BY created_at DESC
+	`
+
+	rows, err := hc.db.Query(query, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to fetch user tickets",
+			"error":   err.Error(),
+		})
+		return
+	}
+	defer rows.Close()
+
+	tickets := []gin.H{}
+	for rows.Next() {
+		var id int
+		var name, email, phone, service, message, details, status, adminRemarks, createdAt, updatedAt string
+		err := rows.Scan(&id, &name, &email, &phone, &service, &message, &details, &status, &adminRemarks, &createdAt, &updatedAt)
+		if err != nil {
+			continue
+		}
+
+		tickets = append(tickets, gin.H{
+			"id":           id,
+			"userId":       userID,
+			"name":         name,
+			"email":        email,
+			"phone":        phone,
+			"service":      service,
+			"message":      message,
+			"details":      details,
+			"status":       status,
+			"adminRemarks": adminRemarks,
+			"createdAt":    createdAt,
+			"updatedAt":    updatedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    tickets,
+	})
+}
+
