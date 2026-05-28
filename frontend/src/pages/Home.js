@@ -781,34 +781,33 @@ const Home = () => {
               <div className="bg-white/5 border border-white/10 p-6 rounded-2xl shadow-2xl max-w-sm w-full backdrop-blur-sm relative overflow-hidden">
                 <div className="flex justify-between items-center pb-4 border-b border-white/10 mb-4">
                   <div className="flex items-center space-x-2"></div>
-                    <div className="w-2.5 h-2.5 rounded-full bg-red-400"></div>
-                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-400"></div>
-                    <div className="w-2.5 h-2.5 rounded-full bg-green-400"></div>
-                  </div>
-                  <span className="text-[10px] text-white/50 tracking-wider">mvsr-alumni.apk</span>
+                  <div className="w-2.5 h-2.5 rounded-full bg-red-400"></div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-yellow-400"></div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-green-400"></div>
                 </div>
-                <div className="space-y-3.5">
-                  <div className="h-7 bg-white/10 rounded-lg animate-pulse w-3/4"></div>
-                  <div className="h-20 bg-white/5 rounded-xl border border-white/10 flex items-center p-3.5 space-x-3">
-                    <div className="w-9 h-9 rounded-full bg-mvsr-500/20 text-mvsr-400 flex items-center justify-center font-bold">JD</div>
-                    <div className="flex-1 space-y-2">
-                      <div className="h-3 bg-white/15 rounded w-1/3"></div>
-                      <div className="h-2.5 bg-white/10 rounded w-1/2"></div>
-                    </div>
+                <span className="text-[10px] text-white/50 tracking-wider">mvsr-alumni.apk</span>
+              </div>
+              <div className="space-y-3.5">
+                <div className="h-7 bg-white/10 rounded-lg animate-pulse w-3/4"></div>
+                <div className="h-20 bg-white/5 rounded-xl border border-white/10 flex items-center p-3.5 space-x-3">
+                  <div className="w-9 h-9 rounded-full bg-mvsr-500/20 text-mvsr-400 flex items-center justify-center font-bold">JD</div>
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 bg-white/15 rounded w-1/3"></div>
+                    <div className="h-2.5 bg-white/10 rounded w-1/2"></div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <div className="h-10 bg-mvsr-600/40 rounded-xl border border-mvsr-600/30"></div>
-                    <div className="h-10 bg-white/10 rounded-xl"></div>
-                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div className="h-10 bg-mvsr-600/40 rounded-xl border border-mvsr-600/30"></div>
+                  <div className="h-10 bg-white/10 rounded-xl"></div>
                 </div>
               </div>
             </div>
-
           </div>
+
         </div>
       </div>
-
     </div>
+
   );
 };
 
